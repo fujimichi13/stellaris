@@ -13,6 +13,8 @@ uniform vec3 shadowLightPosition;
 uniform sampler2D samplerWarpX;
 uniform sampler2D samplerWarpY;
 
+uniform sampler2D noisetex;
+
 layout(r32ui) uniform uimage2D histX;
 layout(r32ui) uniform uimage2D histY;
 
@@ -64,16 +66,9 @@ vec4 toShadowClip(vec3 worldPos){
     return vec4(c.xyz/c.w,1.);
 }
 
-float interleavedGradientNoise(vec2 p){
-    return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));
+vec2 bluenoise(vec2 fragCoord){
+    return texelFetch(noisetex,ivec2(fragCoord)&127,0).rg;
 }
-
-const vec2 poissonDisk[12] = vec2[](
-    vec2(-0.326,-0.406), vec2(-0.840,-0.074), vec2(-0.696, 0.457),
-    vec2(-0.203, 0.621), vec2( 0.962,-0.195), vec2( 0.473,-0.480),
-    vec2( 0.519, 0.767), vec2( 0.185,-0.893), vec2( 0.507, 0.064),
-    vec2( 0.896, 0.412), vec2(-0.322,-0.933), vec2(-0.792,-0.598)
-);
 
 float sampleShadow(vec3 worldPos, vec3 n, float NdotL){
     vec4 clip = toShadowClip(worldPos);
@@ -97,22 +92,46 @@ float sampleShadow(vec3 worldPos, vec3 n, float NdotL){
         return 1.;
     }
 
-    vec2 sampleTexelWorld=vec2(abs(2./shadowProjection[0][0]),abs(2./shadowProjection[1][1]))/(float(shadowMapResolution)*sampleSlope);
-    float sampleTexel=max(sampleTexelWorld.x, sampleTexelWorld.y);
+    vec2 ortho=vec2(abs(2./shadowProjection[0][0]),abs(2./shadowProjection[1][1]));
+    float depthRange=2./abs(shadowProjection[2][2]);
+
+    vec2 sampleTexelWorld=ortho/(float(shadowMapResolution)*sampleSlope);
+    float sampleTexel=max(sampleTexelWorld.x,sampleTexelWorld.y);
 
     float zBias=sampleTexel*(.25+1.*tanT)*abs(shadowProjection[2][2])*.5;
     float z=sp.z-zBias;
 
     float texelUV=1./float(shadowMapResolution);
-    float angle=interleavedGradientNoise(gl_FragCoord.xy)*6.2831853;
-    float sA=sin(angle), cA=cos(angle);
-    mat2 rot=mat2(cA,-sA,sA,cA);
+    vec2 bn=bluenoise(gl_FragCoord.xy)*6.2831853;
 
+    //blocker
+    vec2 searchUV=min(depthRange*.0047*sampleSlope/ortho,vec2(64.*texelUV));
+    float searchBias=.0025*min(tanT,1.5);
+    float blockerSum=0.;
+    float blockers=0.;
+    for(int i=0;i<12;i++){
+        float a=float(i)*2.3999632+bn.x;
+        vec2 p=sqrt((float(i)+.5)/12.)*vec2(cos(a),sin(a));
+        float d=texture(shadowtex1,sp.xy+p*searchUV).r;
+        if(d<z-length(p)*searchBias){
+            blockerSum+=d;
+            blockers+=1.;
+        }
+    }
+
+    //penumbra
+    float avgBlocker=(blockers>.5)?blockerSum/blockers:z;
+    float penumbraWorld=(z-avgBlocker)*depthRange*.0047;
+    vec2 filterUV=max(penumbraWorld*sampleSlope/ortho,vec2(1.5*texelUV));
+
+    // filter
+    float radiusBias=penumbraWorld*tanT*abs(shadowProjection[2][2])*.25;
     float occ=0.;
     for(int i=0;i<12;i++){
-        vec2 o=rot*poissonDisk[i]*1.5*texelUV;
-        float d=texture(shadowtex1,sp.xy+o).r;
-        occ+=(z>d)?1.:0.;
+        float a=float(i)*2.3999632+bn.y;
+        vec2 p=sqrt((float(i)+.5)/12.)*vec2(cos(a),sin(a));
+        float d=texture(shadowtex1,sp.xy+p*filterUV).r;
+        occ+=(z-length(p)*radiusBias>d)?1.:0.;
     }
     occ/=12.;
 
