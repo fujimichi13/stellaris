@@ -1,14 +1,29 @@
 #version 430 compatibility
 
+#include "/lib/atmosphere/scattering.glsl"
+#include "/lib/surface/brdf.glsl"
+
+/*
+const int colortex3Format = RGBA16F;
+*/
+
 uniform sampler2D colortex0;
+uniform sampler2D colortex2;
+uniform sampler2D colortex3;
+uniform sampler2D colortex4;
 uniform sampler2D depthtex0;
 uniform sampler2D shadowtex1;
+
+uniform sampler2D samplerTransmittance;
+uniform sampler2D samplerSky;
 
 uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 shadowProjection;
 uniform mat4 shadowModelView;
 uniform vec3 shadowLightPosition;
+uniform vec3 sunPosition;
+uniform vec3 cameraPosition;
 
 uniform sampler2D samplerWarpX;
 uniform sampler2D samplerWarpY;
@@ -27,6 +42,10 @@ const float sunPathRotation = -40.0;
 
 const int shadowMapResolution = 2048;
 const float shadowDistance = 192.0;
+
+const float SUN_SCALE   = 1.0;
+const vec3  MOON_LIGHT  = vec3(.20,.30,.55)*.35;
+const float SKY_AMBIENT = 1.0;
 
 float rtwsmWarp1D(sampler2D tex, float u, out float slope){
     slope=1.;
@@ -138,37 +157,91 @@ float sampleShadow(vec3 worldPos, vec3 n, float NdotL){
     float edge=max(abs(clip.x),abs(clip.y));
     float fade=1.-smoothstep(.85,1.,edge);
 
-    return 1.-occ*(1.-.35)*fade;
+    return 1.-occ*fade;
+}
+
+//https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
+vec3 ACES(vec3 v){
+    v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
+    v=(v*(v+.0245786)-.000090537)/(v*(.983729*v+.432951)+.238081);
+    return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
+}
+
+vec3 skyRadiance(vec3 d){
+    float t=max(asin(clamp(d.y,-1.,1.)),0.);
+    vec3 s=texture(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,sqrt(t*.63661977)*.5+.5)).rgb;
+    return s*(1.-.6*smoothstep(0.,-.4,d.y));
 }
 
 void main(){
     vec4 albedo=texture(colortex0,texcoord);
     float depth=texture(depthtex0,texcoord).r;
 
+    color=albedo;
+    if(depth>=1.) return;
+
+    ivec2 px=ivec2(gl_FragCoord.xy);
     vec3 worldPos=worldSpacePosition(texcoord,depth);
 
-    vec3 c=cross(dFdx(worldPos),dFdy(worldPos));
-    vec3 n=c/max(length(c),1e-8);
-    if(dot(n,worldPos)>0.) n=-n;
+    vec3 gc=cross(dFdx(worldPos),dFdy(worldPos));
+    vec3 ng=gc/max(length(gc),1e-8);
+    if(dot(ng,worldPos)>0.) ng=-ng;
 
     vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-    float NdotL=clamp(dot(n,L),0.,1.);
+    float NdotLg=clamp(dot(ng,L),0.,1.);
 
-    float shadow=1.;
-
-    if(depth<1.){
-        vec4 shadowClip=toShadowClip(worldPos);
-
-        vec2 uv=shadowClip.xy*.5+.5;
-        if(uv.x>=0.&&uv.x<=1.&&uv.y>=0.&&uv.y<=1.){
-            int binX=clamp(int(uv.x*float(256)),0,256-1);
-            int binY=clamp(int(uv.y*float(256)),0,256-1);
-            imageAtomicAdd(histX,ivec2(binX,0),1u);
-            imageAtomicAdd(histY,ivec2(binY,0),1u);
-        }
-
-        shadow=sampleShadow(worldPos,n,NdotL);
+    vec4 shadowClip=toShadowClip(worldPos);
+    vec2 suv=shadowClip.xy*.5+.5;
+    if(suv.x>=0.&&suv.x<=1.&&suv.y>=0.&&suv.y<=1.){
+        int binX=clamp(int(suv.x*float(256)),0,256-1);
+        int binY=clamp(int(suv.y*float(256)),0,256-1);
+        imageAtomicAdd(histX,ivec2(binX,0),1u);
+        imageAtomicAdd(histY,ivec2(binY,0),1u);
     }
 
-    color=vec4(albedo.rgb*shadow,albedo.a);
+    float vis=sampleShadow(worldPos,ng,NdotLg);
+
+    vec4 nd=texelFetch(colortex3,px,0);
+    if(dot(nd.xyz,nd.xyz)<.25){
+        color=vec4(albedo.rgb*mix(.35,1.,vis),albedo.a);
+        return;
+    }
+
+    vec3 N=normalize(nd.xyz);
+    vec4 spec=texelFetch(colortex2,px,0);
+    vec2 lm=texelFetch(colortex4,px,0).rg;
+
+    vec3 albedoLin=pow(albedo.rgb,vec3(2.2));
+    Material m=decodeLabPBR(spec,albedoLin);
+    m.ao=nd.w;
+
+    vec3 V=-normalize(worldPos);
+
+    vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
+    float alt=eyeAlt(cameraPosition.y);
+    vec3 sunCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*SUN_SCALE*smoothstep(-.04,.0,S.y);
+    vec3 moonCol=MOON_LIGHT*(1.-smoothstep(-.12,.02,S.y));
+    vec3 lightCol=sunCol+moonCol;
+
+    float vis2=vis*smoothstep(0.,.1,NdotLg);
+    vis2=mix(vis2,vis*.5,m.sss*step(NdotLg,.001));
+
+    vec3 dDiff,dSpec;
+    evalDirectBRDF(m,N,V,L,dDiff,dSpec);
+    vec3 direct=(dDiff+dSpec)*lightCol*vis2;
+
+    float skyVis=lm.y*lm.y;
+    vec3 skyDiff=skyRadiance(normalize(N+vec3(0.,1.,0.)))*SKY_AMBIENT*skyVis;
+    vec3 R=dominantReflection(N,reflect(-V,N),m.roughness);
+    vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;
+    skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
+    vec3 ambient=evalAmbient(m,N,V,skyDiff,skyEnv);
+
+    float bl=pow(lm.x,4.);
+    vec3 blockDiff=m.diffuse*vec3(1.,.52,.22)*24.*bl*m.ao;
+    vec3 emissive=m.albedo*m.emission*16.;
+
+    vec3 hdr=direct+ambient+blockDiff+emissive;
+
+    color=vec4(pow(ACES(hdr),vec3(.4545455)),albedo.a);
 }
