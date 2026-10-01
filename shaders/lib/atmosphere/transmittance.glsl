@@ -3,53 +3,32 @@
 
     #include "geometry.glsl"
 
-    float getLayerDensity(const DensityProfileLayer layer,float h){
-        return clamp(layer.exp_term*exp(layer.exp_scale*h)+layer.linear_term*h+layer.constant_term,0.,1.);
+    vec4 lutT(sampler2D s,float c,float h){
+        return textureLod(s,vec2(clamp(c*.5+.5,0.,1.),clamp(h,0.,1.)),0.);
     }
 
-    float getProfileDensity(const DensityProfile profile,float h){
-        return h<profile.layers[0].width?getLayerDensity(profile.layers[0],h):getLayerDensity(profile.layers[1],h);
+    void coefficients(float h,out vec4 rS,out vec4 aS,out vec4 ex){
+        h=max(h,0.);
+        float ad=1.3681e20*exp(-h/.73)+2e6;
+        aS=vec4(1.5908e-22,1.7711e-22,2.0942e-22,2.4033e-22)*ad;
+        vec4 aA=vec4(2.8722e-24,4.6168e-24,7.9706e-24,1.3578e-23)*ad;
+        rS=vec4(6.605e-3,1.067e-2,1.842e-2,3.156e-2)*exp(-.07771971*pow(h,1.16364243));
+        float z=log(h+1e-4)-3.22261;
+        vec4 oA=vec4(3.472e-21,3.914e-21,1.349e-21,1.103e-22)*.03*3.78547397e20/(h+1e-4)*exp(-z*z*5.55555555);
+        ex=aS+aA+rS+oA;
     }
 
-    float opticalLengthToAtmTop(const DensityProfile profile,float mu,float r){
-        float dx=distToExitAtmosphere(mu,r)/float(LUT_SAMPLES);
-        float res=0.;
-        for(int i=0;i<=LUT_SAMPLES;i++){
-            float d=float(i)*dx;
-            float ri=sqrt(max(d*d+2.*r*mu*d+r*r,0.));
-            float w=(i==0||i==LUT_SAMPLES)?.5:1.;
-            res+=getProfileDensity(profile,ri-A_r)*w*dx;
+    vec4 calcTransmittance(float c,float r){
+        vec3 S=vec3(sqrt(1.-c*c),c,0.);
+        vec3 O=vec3(0.,r,0.);
+        float dt=raySphere(O,S,RA)/32.;
+        vec4 sum=vec4(0.);
+        for(int i=0;i<32;i++){
+            vec4 rS,aS,ex;
+            coefficients(length(O+S*((float(i)+.5)*dt))-R,rS,aS,ex);
+            sum+=ex*dt;
         }
-        return res;
-    }
-
-    vec3 calcTransmittanceToAtmTop(float mu,float r){
-        return exp(-(
-            ray_e*opticalLengthToAtmTop(rayleigh_density,mu,r)+
-            mie_e*opticalLengthToAtmTop(mie_density,mu,r)+
-            ozo_e*opticalLengthToAtmTop(absorption_density,mu,r)
-        ));
-    }
-
-    vec3 getTransmittanceToAtmTop(float mu,float r,sampler2D lut,vec2 lutRes){
-        return texture(lut,muR2uv(mu,r,lutRes)).rgb;
-    }
-
-    vec3 getTransmittance(float mu,float r,float d,bool intersects_ground,sampler2D lut,vec2 lutRes){
-        float rd=clampRadius(sqrt(max(d*d+2.*r*mu*d+r*r,0.)));
-        float mud=clampCosine((r*mu+d)/rd);
-
-        if(intersects_ground){
-            return min(getTransmittanceToAtmTop(-mud,rd,lut,lutRes)/getTransmittanceToAtmTop(-mu,r,lut,lutRes),vec3(1.));
-        }
-        return min(getTransmittanceToAtmTop(mu,r,lut,lutRes)/getTransmittanceToAtmTop(mud,rd,lut,lutRes),vec3(1.));
-    }
-
-    vec3 getTransmittanceToSun(float r,float mu_sun,sampler2D lut,vec2 lutRes){
-        float sinH=A_r/r;
-        float cosH=-sqrt(max(1.-sinH*sinH,0.));
-        float visibility=smoothstep(-sinH*.05,sinH*.05,mu_sun-cosH);
-        return visibility*getTransmittanceToAtmTop(mu_sun,r,lut,lutRes);
+        return exp(-sum);
     }
 
 #endif
