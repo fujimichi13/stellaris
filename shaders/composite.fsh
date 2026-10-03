@@ -1,5 +1,7 @@
 #version 430 compatibility
 
+#define COLORED_SHADOW
+
 #include "/lib/atmosphere/scattering.glsl"
 #include "/lib/surface/brdf.glsl"
 
@@ -29,6 +31,9 @@ uniform sampler2D samplerWarpX;
 uniform sampler2D samplerWarpY;
 
 uniform sampler2D noisetex;
+
+uniform sampler2D shadowtex0;
+uniform sampler2D shadowcolor0;
 
 layout(r32ui) uniform uimage2D histX;
 layout(r32ui) uniform uimage2D histY;
@@ -89,7 +94,7 @@ vec2 bluenoise(vec2 fragCoord){
     return texelFetch(noisetex,ivec2(fragCoord)&127,0).rg;
 }
 
-float sampleShadow(vec3 worldPos, vec3 n, float NdotL){
+vec3 sampleShadow(vec3 worldPos, vec3 n, float NdotL){
     vec4 clip = toShadowClip(worldPos);
 
     vec2 slope;
@@ -108,7 +113,7 @@ float sampleShadow(vec3 worldPos, vec3 n, float NdotL){
     vec3 sp=vec3(warpedXY,c.z)*.5+.5;
 
     if(sp.x<0.||sp.x>1.||sp.y<0.||sp.y>1.||sp.z<0.||sp.z>1.){
-        return 1.;
+        return vec3(1.);
     }
 
     vec2 ortho=vec2(abs(2./shadowProjection[0][0]),abs(2./shadowProjection[1][1]));
@@ -145,19 +150,40 @@ float sampleShadow(vec3 worldPos, vec3 n, float NdotL){
 
     // filter
     float radiusBias=penumbraWorld*tanT*abs(shadowProjection[2][2])*.25;
-    float occ=0.;
+    vec3 visSum=vec3(0.);
     for(int i=0;i<12;i++){
         float a=float(i)*2.3999632+bn.y;
         vec2 p=sqrt((float(i)+.5)/12.)*vec2(cos(a),sin(a));
-        float d=texture(shadowtex1,sp.xy+p*filterUV).r;
-        occ+=(z-length(p)*radiusBias>d)?1.:0.;
+        vec2 suv=sp.xy+p*filterUV;
+        float zs=z-length(p)*radiusBias;
+
+        if(zs>texture(shadowtex1,suv).r){
+            continue;
+        }
+
+        vec3 v=vec3(1.);
+        #ifdef COLORED_SHADOW
+            if(zs>texture(shadowtex0,suv).r){
+                vec3 tint=pow(texture(shadowcolor0,suv).rgb,vec3(2.2));
+
+                float mx=max(max(tint.r,tint.g),max(tint.b,1e-3));
+                float mn=min(min(tint.r,tint.g),tint.b);
+
+                vec3 hue=tint/mx;
+                vec3 sat=(tint-mn)/max(mx-mn,1e-3);
+                hue=mix(hue,sat,smoothstep(0.,.05,mx-mn));
+
+                v=mix(vec3(1.),hue,.85)*.85;
+            }
+        #endif
+        visSum+=v;
     }
-    occ/=12.;
+    vec3 vis=visSum/12.;
 
     float edge=max(abs(clip.x),abs(clip.y));
     float fade=1.-smoothstep(.85,1.,edge);
 
-    return 1.-occ*fade;
+    return mix(vec3(1.),vis,fade);
 }
 
 //https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
@@ -199,11 +225,12 @@ void main(){
         imageAtomicAdd(histY,ivec2(binY,0),1u);
     }
 
-    float vis=sampleShadow(worldPos,ng,NdotLg);
+    vec3 visC=sampleShadow(worldPos,ng,NdotLg);
+    float vis=dot(visC,vec3(1./3.));
 
     vec4 nd=texelFetch(colortex3,px,0);
     if(dot(nd.xyz,nd.xyz)<.25){
-        color=vec4(albedo.rgb*mix(.35,1.,vis),albedo.a);
+        color=vec4(albedo.rgb*mix(vec3(.35),vec3(1.),visC),albedo.a);
         return;
     }
 
@@ -223,8 +250,8 @@ void main(){
     vec3 moonCol=MOON_LIGHT*(1.-smoothstep(-.12,.02,S.y));
     vec3 lightCol=sunCol+moonCol;
 
-    float vis2=vis*smoothstep(0.,.1,NdotLg);
-    vis2=mix(vis2,vis*.5,m.sss*step(NdotLg,.001));
+    vec3 vis2=visC*smoothstep(0.,.1,NdotLg);
+    vis2=mix(vis2,visC*.5,m.sss*step(NdotLg,.001));
 
     vec3 dDiff,dSpec;
     evalDirectBRDF(m,N,V,L,dDiff,dSpec);
