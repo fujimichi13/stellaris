@@ -6,6 +6,9 @@ layout(triangle_strip, max_vertices = 48) out;
 in vec4 glcolor[];
 in vec2 texcoord[];
 
+in vec3 snormal[];
+out vec3 snormal1;
+
 out vec4 glcolor1;
 out vec2 texcoord1;
 
@@ -50,6 +53,7 @@ void main() {
                     gl_Position=vec4(rtwsmWarp(p.xy),p.z,p.w);
                     glcolor1=glcolor[0]*w.x+glcolor[1]*w.y+glcolor[2]*w.z;
                     texcoord1=texcoord[0]*w.x+texcoord[1]*w.y+texcoord[2]*w.z;
+                    snormal1=snormal[0]*w.x+snormal[1]*w.y+snormal[2]*w.z;
                     EmitVertex();
                 }
                 EndPrimitive();

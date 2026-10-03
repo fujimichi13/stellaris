@@ -1,71 +1,78 @@
 #version 430 compatibility
 
-layout(r32ui) uniform uimage2D histX;
-layout(r32ui) uniform uimage2D histY;
-layout(r32f) uniform image2D warpX;
-layout(r32f) uniform image2D warpY;
+#define RSM_ENABLED
+
+uniform sampler2D colortex0;
+uniform sampler2D colortex1;
+uniform sampler2D colortex2;
+uniform sampler2D colortex3;
+uniform sampler2D colortex4;
+uniform sampler2D colortex5;
+uniform sampler2D colortex6;
+uniform sampler2D colortex7;
+uniform sampler2D colortex8;
 
 in vec2 texcoord;
 
-/* RENDERTARGETS:1 */
+/* RENDERTARGETS:0 */
 layout(location = 0) out vec4 color;
 
-float loadX(int i){
-    return (i<0||i>=256)?0.:float(imageLoad(histX,ivec2(i,0)).r);
-}
-float loadY(int i){
-    return (i<0||i>=256)?0.:float(imageLoad(histY,ivec2(i,0)).r);
-}
-
-float blurX(int i){
-    return loadX(i-2)+2.*loadX(i-1)+3.*loadX(i)+2.*loadX(i+1)+loadX(i+2);
-}
-float blurY(int i){
-    return loadY(i-2)+2.*loadY(i-1)+3.*loadY(i)+2.*loadY(i+1)+loadY(i+2);
+vec3 ACES(vec3 v){
+    v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
+    v=(v*(v+.0245786)-.000090537)/(v*(.983729*v+.432951)+.238081);
+    return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
 }
 
-float cdfX(int bin){
-    float total=0.;
-    float prefix=0.;
-    for(int i=0;i<256;i++){
-        float w=blurX(i);
-        total+=w;
-        if(i<=bin) prefix+=w;
-    }
-    float uniformCdf=float(bin+1)/float(256);
-    float measured=(total>0.)?prefix/total:uniformCdf;
-    return mix(measured,uniformCdf,.3);
-}
-
-float cdfY(int bin){
-    float total=0.;
-    float prefix=0.;
-    for(int i=0;i<256;i++){
-        float w=blurY(i);
-        total+=w;
-        if(i<=bin) prefix+=w;
-    }
-    float uniformCdf=float(bin+1)/float(256);
-    float measured=(total>0.0)?prefix/total:uniformCdf;
-    return mix(measured,uniformCdf,.3);
-}
+const float K[5]=float[5](1./16.,4./16.,6./16.,4./16.,1./16.);
 
 void main(){
     ivec2 px=ivec2(gl_FragCoord.xy);
+    vec4 base=texelFetch(colortex8,px,0);
+    vec4 wgt=texelFetch(colortex7,px,0);
 
-    if(px.y==0&&px.x<256){
-        int bin=px.x;
-        float identity=float(bin+1)/float(256);
-
-        float oldX=imageLoad(warpX,ivec2(bin,0)).r;
-        float oldY=imageLoad(warpY,ivec2(bin,0)).r;
-
-        if(oldX<=0.) oldX=identity;
-        if(oldY<=0.) oldY=identity;
-
-        imageStore(warpX,ivec2(bin,0),vec4(mix(oldX,cdfX(bin),.05)));
-        imageStore(warpY,ivec2(bin,0),vec4(mix(oldY,cdfY(bin),.05)));
+    if(wgt.a>.5){
+        color=base;
+        return;
     }
 
-    color=vec4(0.0);
+    vec3 gi=vec3(0.);
+
+    #ifdef RSM_ENABLED
+        vec4 h0=texelFetch(colortex5,px,0);
+        float d0=texelFetch(colortex6,px,0).r;
+        vec3 n0=normalize(texelFetch(colortex3,px,0).xyz);
+
+        int s=(h0.a<4.)?3:(h0.a<12.)?2:1;
+
+        ivec2 res=textureSize(colortex5,0);
+        vec3 sum=vec3(0.);
+        float wsum=0.;
+
+        for(int y=-2;y<=2;y++){
+            for(int x=-2;x<=2;x++){
+                ivec2 q=px+ivec2(x,y)*s;
+                if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,res))) continue;
+
+                float dq=texelFetch(colortex6,q,0).r;
+                if(dq<=0.) continue;
+                
+                vec3 nq=normalize(texelFetch(colortex3,q,0).xyz);
+                vec3 gq=texelFetch(colortex5,q,0).rgb;
+                if(any(isnan(gq))) continue;
+
+                float w=K[x+2]*K[y+2];
+                w*=pow(max(dot(n0,nq),0.),24.);                       // normal edge stop
+                w*=exp(-abs(dq-d0)/(.02*d0*float(s)+.05));            // depth edge stop
+
+                sum+=gq*w;
+                wsum+=w;
+            }
+        }
+
+        gi=(wsum>1e-4)?sum/wsum:h0.rgb;
+        gi*=wgt.rgb;
+    #endif
+
+    vec3 hdr=base.rgb+gi;
+    color=vec4(pow(ACES(hdr),vec3(.4545455)),base.a);
 }

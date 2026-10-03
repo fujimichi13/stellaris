@@ -1,5 +1,6 @@
 #version 430 compatibility
 
+#define RSM_ENABLED
 #define COLORED_SHADOW
 
 #include "/lib/atmosphere/scattering.glsl"
@@ -7,14 +8,31 @@
 
 /*
 const int colortex3Format = RGBA16F;
+const int colortex5Format = RGBA16F;
+const int colortex6Format = R32F;
+const int colortex7Format = RGBA16F;
+const int colortex8Format = RGBA16F;
+
+const bool colortex5Clear = false;
+const bool colortex6Clear = false;
 */
 
 uniform sampler2D colortex0;
+uniform sampler2D colortex1;
 uniform sampler2D colortex2;
 uniform sampler2D colortex3;
 uniform sampler2D colortex4;
+uniform sampler2D colortex5;
+uniform sampler2D colortex6;
+uniform sampler2D colortex7;
+uniform sampler2D colortex8;
 uniform sampler2D depthtex0;
 uniform sampler2D shadowtex1;
+
+uniform mat4 gbufferPreviousModelView;
+uniform mat4 gbufferPreviousProjection;
+uniform vec3 previousCameraPosition;
+uniform int frameCounter;
 
 uniform sampler2D samplerTransmittance;
 uniform sampler2D samplerSky;
@@ -23,6 +41,9 @@ uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 shadowProjection;
 uniform mat4 shadowModelView;
+uniform mat4 shadowProjectionInverse;
+uniform mat4 shadowModelViewInverse;
+
 uniform vec3 shadowLightPosition;
 uniform vec3 sunPosition;
 uniform vec3 cameraPosition;
@@ -34,23 +55,23 @@ uniform sampler2D noisetex;
 
 uniform sampler2D shadowtex0;
 uniform sampler2D shadowcolor0;
+uniform sampler2D shadowcolor1;
 
 layout(r32ui) uniform uimage2D histX;
 layout(r32ui) uniform uimage2D histY;
 
 in vec2 texcoord;
 
-/* RENDERTARGETS:0 */
+/* RENDERTARGETS:8,5,6,7 */
 layout(location = 0) out vec4 color;
+layout(location = 1) out vec4 color1;
+layout(location = 2) out vec4 color2;
+layout(location = 3) out vec4 color3;
 
 const float sunPathRotation = -40.0;
 
 const int shadowMapResolution = 2048;
 const float shadowDistance = 192.0;
-
-const float SUN_SCALE   = 1.0;
-const vec3  MOON_LIGHT  = vec3(.20,.30,.55)*.35;
-const float SKY_AMBIENT = 1.0;
 
 float rtwsmWarp1D(sampler2D tex, float u, out float slope){
     slope=1.;
@@ -199,11 +220,16 @@ vec3 skyRadiance(vec3 d){
     return s*(1.-.6*smoothstep(0.,-.4,d.y));
 }
 
+#include "/lib/lighting/globalIllumination.glsl"
+
 void main(){
     vec4 albedo=texture(colortex0,texcoord);
     float depth=texture(depthtex0,texcoord).r;
 
     color=albedo;
+    color1=vec4(0.);
+    color2=vec4(0.);
+    color3=vec4(0.,0.,0.,1.);
     if(depth>=1.) return;
 
     ivec2 px=ivec2(gl_FragCoord.xy);
@@ -246,8 +272,8 @@ void main(){
 
     vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
     float alt=eyeAlt(cameraPosition.y);
-    vec3 sunCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*SUN_SCALE*smoothstep(-.04,.0,S.y);
-    vec3 moonCol=MOON_LIGHT*(1.-smoothstep(-.12,.02,S.y));
+    vec3 sunCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*1.*smoothstep(-.04,.0,S.y);
+    vec3 moonCol=vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
     vec3 lightCol=sunCol+moonCol;
 
     vec3 vis2=visC*smoothstep(0.,.1,NdotLg);
@@ -258,7 +284,7 @@ void main(){
     vec3 direct=(dDiff+dSpec)*lightCol*vis2;
 
     float skyVis=lm.y*lm.y;
-    vec3 skyDiff=skyRadiance(normalize(N+vec3(0.,1.,0.)))*SKY_AMBIENT*skyVis;
+    vec3 skyDiff=skyRadiance(normalize(N+vec3(0.,1.,0.)))*1.*skyVis;
     vec3 R=dominantReflection(N,reflect(-V,N),m.roughness);
     vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;
     skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
@@ -268,7 +294,17 @@ void main(){
     vec3 blockDiff=m.diffuse*vec3(1.,.52,.22)*24.*bl*m.ao;
     vec3 emissive=m.albedo*m.emission*16.;
 
+    vec3 giW=vec3(0.);
+    #ifdef RSM_ENABLED
+        vec4 acc=rsmTemporal(worldPos,RSM(worldPos,N));
+        color1=acc;
+        color2=vec4(length(worldPos),0.,0.,0.);
+        giW=lightCol*m.diffuse*m.ao*skyVis*7.;
+    #endif
+    color3=vec4(giW,0.);
+
     vec3 hdr=direct+ambient+blockDiff+emissive;
 
-    color=vec4(pow(ACES(hdr),vec3(.4545455)),albedo.a);
+    //color=vec4(pow(ACES(hdr),vec3(.4545455)),albedo.a);
+    color=vec4(hdr,albedo.a);
 }
