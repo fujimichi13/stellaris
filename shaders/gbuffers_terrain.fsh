@@ -1,10 +1,8 @@
 #version 430 compatibility
 
+#include "/settings.glsl"
+#include "/lib/utility/uniforms.glsl"
 #include "/lib/surface/brdf.glsl"
-
-uniform sampler2D tex;
-uniform sampler2D normals;
-uniform sampler2D specular;
 
 in vec4 glcolor;
 in vec2 texcoord;

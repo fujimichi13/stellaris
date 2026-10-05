@@ -1,101 +1,74 @@
 #version 430 compatibility
 
-#include "/lib/surface/brdf.glsl"
+#include "/settings.glsl"
+#include "/lib/utility/uniforms.glsl"
 
-uniform sampler2D colortex0;
-uniform sampler2D colortex2;
-uniform sampler2D colortex3;
-uniform sampler2D colortex4;
-uniform sampler2D colortex5;
-uniform sampler2D depthtex0;
-uniform sampler2D samplerSky;
-uniform sampler2D noisetex;
-
-uniform mat4 gbufferProjection;
-uniform mat4 gbufferProjectionInverse;
-uniform mat4 gbufferModelView;
-uniform mat4 gbufferModelViewInverse;
+layout(r32ui) uniform uimage2D histX;
+layout(r32ui) uniform uimage2D histY;
+layout(r32f) uniform image2D warpX;
+layout(r32f) uniform image2D warpY;
 
 in vec2 texcoord;
 
-/* RENDERTARGETS:0 */
+/* RENDERTARGETS:1 */
 layout(location = 0) out vec4 color;
 
-#define RAYTRACE_STEPS 64
-#define RAYTRACE_REFINEMENT 6
-
-vec2 bluenoise(vec2 fragCoord){
-    return texelFetch(noisetex,ivec2(fragCoord)&127,0).rg;
+float loadX(int i){
+    return (i<0||i>=256)?0.:float(imageLoad(histX,ivec2(i,0)).r);
+}
+float loadY(int i){
+    return (i<0||i>=256)?0.:float(imageLoad(histY,ivec2(i,0)).r);
 }
 
-vec3 viewSpacePosition(vec2 uv, float depth) {
-    vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
-    return v.xyz/v.w;
+float blurX(int i){
+    return loadX(i-2)+2.*loadX(i-1)+3.*loadX(i)+2.*loadX(i+1)+loadX(i+2);
+}
+float blurY(int i){
+    return loadY(i-2)+2.*loadY(i-1)+3.*loadY(i)+2.*loadY(i+1)+loadY(i+2);
 }
 
-float viewDepth(float d){
-    return -gbufferProjection[3][2]/(d*2.-1.+gbufferProjection[2][2]);
+float cdfX(int bin){
+    float total=0.;
+    float prefix=0.;
+    for(int i=0;i<256;i++){
+        float w=blurX(i);
+        total+=w;
+        if(i<=bin) prefix+=w;
+    }
+    float uniformCdf=float(bin+1)/float(256);
+    float measured=(total>0.)?prefix/total:uniformCdf;
+    return mix(measured,uniformCdf,.3);
 }
 
-vec3 skyRadiance(vec3 d){
-    float t=max(asin(clamp(d.y,-1.,1.)),0.);
-    vec3 s=texture(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,sqrt(t*.63661977)*.5+.5)).rgb;
-    return s*(1.-.6*smoothstep(0.,-.4,d.y));
+float cdfY(int bin){
+    float total=0.;
+    float prefix=0.;
+    for(int i=0;i<256;i++){
+        float w=blurY(i);
+        total+=w;
+        if(i<=bin) prefix+=w;
+    }
+    float uniformCdf=float(bin+1)/float(256);
+    float measured=(total>0.0)?prefix/total:uniformCdf;
+    return mix(measured,uniformCdf,.3);
 }
-
-//https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
-vec3 ACES(vec3 v){
-    v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
-    v=(v*(v+.0245786)-.000090537)/(v*(.983729*v+.432951)+.238081);
-    return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
-}
-
-#include "/lib/surface/ssr.glsl"
 
 void main(){
-    vec4 scene=texture(colortex0,texcoord);
-    float depth=texture(depthtex0,texcoord).r;
-    vec3 hdr=scene.rgb;
-
     ivec2 px=ivec2(gl_FragCoord.xy);
-    vec4 nd=texelFetch(colortex3,px,0);
 
-    if(depth<1.&&dot(nd.xyz,nd.xyz)>=.25){
-        vec3 N=normalize(nd.xyz);
-        vec4 spec=texelFetch(colortex2,px,0);
-        vec2 lm=texelFetch(colortex4,px,0).rg;
+    if(px.y==0&&px.x<256){
+        int bin=px.x;
+        float identity=float(bin+1)/float(256);
 
-        Material m=decodeLabPBR(spec,pow(texelFetch(colortex5,px,0).rgb,vec3(2.2)));
-        m.ao=nd.w;
+        float oldX=imageLoad(warpX,ivec2(bin,0)).r;
+        float oldY=imageLoad(warpY,ivec2(bin,0)).r;
 
-        if(m.roughness<.4){
-            vec3 P=viewSpacePosition(texcoord,depth);
-            vec3 V=-normalize(mat3(gbufferModelViewInverse)*P);
-            vec3 Rm=reflect(-V,N);
+        if(oldX<=0.) oldX=identity;
+        if(oldY<=0.) oldY=identity;
 
-            vec2 bn=bluenoise(gl_FragCoord.xy);
-            vec2 bn2=bluenoise(gl_FragCoord.xy+vec2(37.,17.));
-            float a=m.roughness*m.roughness;
-            float ph=bn.x*6.2831853;
-            float cz=bn.y*2.-1.;
-            vec3 j=vec3(sqrt(1.-cz*cz)*vec2(cos(ph),sin(ph)),cz);
-            vec3 Rw=normalize(Rm+j*a*2.);
-            if(dot(Rw,N)<.02) Rw=Rm;
-
-            vec3 D=normalize(mat3(gbufferModelView)*Rw);
-            vec3 Nv=normalize(mat3(gbufferModelView)*N);
-            vec4 hit=screenSpaceReflection(P+Nv*(.02-P.z*.004),D,Rw,bn2.x);
-            hit.a*=1.-smoothstep(.4*.5,.4,m.roughness);
-
-            float skyVis=lm.y*lm.y;
-            vec3 skyDiff=skyRadiance(normalize(N+vec3(0.,1.,0.)))/**SKY_AMBIENT*/*skyVis;
-            vec3 R=dominantReflection(N,Rm,m.roughness);
-            vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;
-            skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
-
-            hdr+=evalAmbient(m,N,V,vec3(0.),(hit.rgb-skyEnv)*hit.a);
-        }
+        imageStore(warpX,ivec2(bin,0),vec4(mix(oldX,cdfX(bin),.05)));
+        imageStore(warpY,ivec2(bin,0),vec4(mix(oldY,cdfY(bin),.05)));
     }
 
-    color=vec4(hdr,1.);
+    color=vec4(0.0);
 }

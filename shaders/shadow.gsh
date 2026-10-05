@@ -32,7 +32,7 @@ vec2 rtwsmWarp(vec2 clipXY){
     return w*2.-1.;
 }
 
-void main() {
+void main(){
     for(int i=0;i<4;i++){
         for(int j=0;j<4-i;j++){
             for(int t=0;t<2;t++){

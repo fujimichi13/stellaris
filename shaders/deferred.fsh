@@ -1,23 +1,15 @@
 #version 430 compatibility
 
+#include "/settings.glsl"
+#include "/lib/utility/uniforms.glsl"
 #include "/lib/atmosphere/scattering.glsl"
-
-uniform sampler2D colortex0;
-uniform sampler2D depthtex0;
-uniform sampler2D samplerTransmittance;
-uniform sampler2D samplerSky;
-
-uniform mat4 gbufferProjectionInverse;
-uniform mat4 gbufferModelViewInverse;
-uniform vec3 sunPosition;
-uniform vec3 cameraPosition;
 
 in vec2 texcoord;
 
 /* RENDERTARGETS:0 */
 layout(location = 0) out vec4 color;
 
-vec3 worldSpacePosition(vec2 uv, float depth) {
+vec3 worldSpacePosition(vec2 uv, float depth){
     vec4 clip=vec4(uv*2.-1.,depth*2.-1.,1.);
     vec4 viewSpace=gbufferProjectionInverse*clip;
     viewSpace/=viewSpace.w;
@@ -65,5 +57,6 @@ void main(){
         sun=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*disc*smoothstep(-.02,0.,V.y)*30.;
     }
 
-    color=vec4(pow(ACES(sky+sun),vec3(.4545455)),1.);
+    //color=vec4(pow(ACES(sky+sun),vec3(.4545455)),1.);
+    color=vec4(sky+sun,1.);
 }

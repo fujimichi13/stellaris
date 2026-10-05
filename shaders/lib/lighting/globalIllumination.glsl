@@ -5,7 +5,7 @@
         vec4 clip=toShadowClip(worldPos);
         vec2 clipPerWorld=vec2(abs(shadowProjection[0][0]),abs(shadowProjection[1][1]));
         const float R=6.;
-        const int NS=16;
+        const int NS=12;
 
         vec2 bn=fract(bluenoise(gl_FragCoord.xy+vec2(37.,91.))+float(frameCounter&63)*vec2(.7548777,.5698403));
         vec3 sum=vec3(0.);
@@ -42,13 +42,13 @@
         vec3 rel=worldPos+cameraPosition-previousCameraPosition;
         vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(rel,1.));
         float expected=length(rel);
-        
+
         vec3 hist=vec3(0.);
         float cnt=0.,wsum=0.;
 
         if(pc.w>0.){
             vec2 puv=pc.xy/pc.w*.5+.5;
-            vec2 res=vec2(textureSize(colortex5,0));
+            vec2 res=vec2(textureSize(colortex5,0))*.5;
             vec2 pp=puv*res-.5;
             ivec2 b=ivec2(floor(pp));
             vec2 f=fract(pp);

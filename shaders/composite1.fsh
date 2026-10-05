@@ -1,78 +1,85 @@
 #version 430 compatibility
 
-#define RSM_ENABLED
+#include "/settings.glsl"
+#include "/lib/utility/uniforms.glsl"
 
-uniform sampler2D colortex0;
-uniform sampler2D colortex1;
-uniform sampler2D colortex2;
-uniform sampler2D colortex3;
-uniform sampler2D colortex4;
-uniform sampler2D colortex5;
-uniform sampler2D colortex6;
-uniform sampler2D colortex7;
-uniform sampler2D colortex8;
+/*
+const int colortex5Format = RGBA16F;
+const int colortex6Format = R32F;
+
+const bool colortex5Clear = false;
+const bool colortex6Clear = false;
+*/
 
 in vec2 texcoord;
 
-/* RENDERTARGETS:0 */
+/* RENDERTARGETS:5,6 */
 layout(location = 0) out vec4 color;
+layout(location = 1) out vec4 color1;
 
-vec3 ACES(vec3 v){
-    v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
-    v=(v*(v+.0245786)-.000090537)/(v*(.983729*v+.432951)+.238081);
-    return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
+float rtwsmWarp1D(sampler2D tex, float u, out float slope){
+    slope=1.;
+    if(u<=0.||u>=1.) return u;
+
+    float t=u*float(256);
+    int i=min(int(t),256-1);
+    float f=t-float(i);
+
+    float hi=texelFetch(tex,ivec2(i,0),0).r;
+    if(hi<=0.) return u;
+
+    float lo=(i==0)?0.:texelFetch(tex,ivec2(i-1,0),0).r;
+
+    slope=max((hi-lo)*float(256),1e-3);
+    return mix(lo,hi,f);
 }
 
-const float K[5]=float[5](1./16.,4./16.,6./16.,4./16.,1./16.);
+vec2 rtwsmWarp(vec2 clipXY, out vec2 slope){
+    vec2 uv=clipXY*.5+.5;
+    vec2 w;
+    w.x=rtwsmWarp1D(samplerWarpX,uv.x,slope.x);
+    w.y=rtwsmWarp1D(samplerWarpY,uv.y,slope.y);
+    return w*2.-1.;
+}
+
+vec4 toShadowClip(vec3 worldPos){
+    vec4 c=shadowProjection*(shadowModelView*vec4(worldPos,1.));
+    return vec4(c.xyz/c.w,1.);
+}
+
+vec2 bluenoise(vec2 fragCoord){
+    return texelFetch(noisetex,ivec2(fragCoord)&127,0).rg;
+}
+
+vec3 worldSpacePosition(vec2 uv, float depth){
+    vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
+    return (gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz;
+}
+
+#include "/lib/lighting/globalIllumination.glsl"
 
 void main(){
-    ivec2 px=ivec2(gl_FragCoord.xy);
-    vec4 base=texelFetch(colortex8,px,0);
-    vec4 wgt=texelFetch(colortex7,px,0);
+    color=vec4(0.);
+    color1=vec4(0.);
 
-    if(wgt.a>.5){
-        color=base;
-        return;
-    }
+    ivec2 hp=ivec2(gl_FragCoord.xy);
+    ivec2 fullRes=ivec2(viewWidth,viewHeight);
 
-    vec3 gi=vec3(0.);
+    ivec2 jit=ivec2(frameCounter&1,(frameCounter>>1)&1);
+    ivec2 fp=min(hp*2+jit,fullRes-1);
 
-    #ifdef RSM_ENABLED
-        vec4 h0=texelFetch(colortex5,px,0);
-        float d0=texelFetch(colortex6,px,0).r;
-        vec3 n0=normalize(texelFetch(colortex3,px,0).xyz);
+    float depth=texelFetch(depthtex0,fp,0).r;
+    if(depth>=1.) return;
 
-        int s=(h0.a<4.)?3:(h0.a<12.)?2:1;
+    vec4 nd=texelFetch(colortex3,fp,0);
+    if(dot(nd.xyz,nd.xyz)<.25) return;
 
-        ivec2 res=textureSize(colortex5,0);
-        vec3 sum=vec3(0.);
-        float wsum=0.;
+    float skyLm=texelFetch(colortex4,fp,0).g;
+    if(skyLm<.15) return;
 
-        for(int y=-2;y<=2;y++){
-            for(int x=-2;x<=2;x++){
-                ivec2 q=px+ivec2(x,y)*s;
-                if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,res))) continue;
+    vec3 N=normalize(nd.xyz);
+    vec3 worldPos=worldSpacePosition((vec2(fp)+.5)/vec2(fullRes),depth);
 
-                float dq=texelFetch(colortex6,q,0).r;
-                if(dq<=0.) continue;
-                
-                vec3 nq=normalize(texelFetch(colortex3,q,0).xyz);
-                vec3 gq=texelFetch(colortex5,q,0).rgb;
-                if(any(isnan(gq))) continue;
-
-                float w=K[x+2]*K[y+2];
-                w*=pow(max(dot(n0,nq),0.),24.);                       // normal edge stop
-                w*=exp(-abs(dq-d0)/(.02*d0*float(s)+.05));            // depth edge stop
-
-                sum+=gq*w;
-                wsum+=w;
-            }
-        }
-
-        gi=(wsum>1e-4)?sum/wsum:h0.rgb;
-        gi*=wgt.rgb;
-    #endif
-
-    vec3 hdr=base.rgb+gi;
-    color=vec4(pow(ACES(hdr),vec3(.4545455)),base.a);
+    color=rsmTemporal(worldPos,RSM(worldPos,N));
+    color1=vec4(length(worldPos),0.,0.,0.);
 }
