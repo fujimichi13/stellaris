@@ -82,6 +82,7 @@
         ivec2 fp=min(hp*2+jit,fullRes-1);
 
         float depth=texelFetch(depthtex0,fp,0).r;
+        if(texelFetch(colortex13,fp,0).w>.5) depth=texelFetch(depthtex1,fp,0).r;
         if(depth>=1.) return;
 
         vec4 nd=texelFetch(colortex3,fp,0);

@@ -42,8 +42,10 @@
 
     uniform float viewWidth;
     uniform float viewHeight;
+    uniform float frameTimeCounter;
 
     uniform int frameCounter;
+    uniform int isEyeInWater;
 
     uniform mat4 gbufferProjection;
     uniform mat4 gbufferProjectionInverse;
@@ -62,4 +64,5 @@
     uniform vec3 cameraPosition;
     uniform vec3 previousCameraPosition;
 
+    uniform ivec2 eyeBrightnessSmooth;
 #endif

@@ -52,6 +52,17 @@
     }
 
     #include "/lib/surface/ssr.glsl"
+    #include "/lib/atmosphere/scattering.glsl"
+    #include "/lib/water/water.glsl"    
+
+    float waterFresnel(float cosI){
+            float c=clamp(cosI,0.,1.);
+            float sinT2=(1.-c*c)/(1.333*1.333);
+            float cosT=sqrt(max(1.-sinT2,0.));
+            float rs=(c-1.333*cosT)/(c+1.333*cosT);
+            float rp=(1.333*c-cosT)/(1.333*c+cosT);
+            return .5*(rs*rs+rp*rp);
+        }
 
     void main(){
         vec4 scene=texture(colortex0,texcoord);
@@ -61,7 +72,7 @@
         ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 nd=texelFetch(colortex3,px,0);
 
-        if(depth<1.&&dot(nd.xyz,nd.xyz)>=.25){
+        if(depth<1.&&dot(nd.xyz,nd.xyz)>=.25&&texelFetch(colortex13,px,0).w<.5){
             vec3 N=normalize(nd.xyz);
             vec4 spec=texelFetch(colortex2,px,0);
             vec2 lm=texelFetch(colortex4,px,0).rg;
@@ -96,6 +107,38 @@
 
                 hdr+=evalAmbient(m,N,V,vec3(0.),(hit.rgb-skyEnv)*hit.a);
             }
+        }
+
+        vec4 wn=texelFetch(colortex13,px,0);
+        if(depth<1.&&wn.w>.5&&isEyeInWater==0){
+            vec3 N=normalize(wn.xyz);
+            vec3 P=viewSpacePosition(texcoord,depth);
+            vec3 V=-normalize(mat3(gbufferModelViewInverse)*P);
+            float NdotV=max(dot(N,V),.001);
+
+            vec3 R=reflect(-V,N);
+            R.y=abs(R.y);
+            vec3 D=normalize(mat3(gbufferModelView)*R);
+            vec3 Nv=normalize(mat3(gbufferModelView)*N);
+            vec4 hit=screenSpaceReflection(P+Nv*(.02-P.z*.004),D,R,bluenoise(gl_FragCoord.xy).x);
+
+            float skyVis=texelFetch(colortex14,px,0).a;
+            skyVis*=skyVis;
+            vec3 refl=mix(skyRadiance(R)*skyVis,hit.rgb,hit.a)*waterFresnel(NdotV);
+
+            vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
+            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
+            vec3 lightCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,eyeAlt(cameraPosition.y)*.01))*smoothstep(-.04,.0,S.y)+vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 H=normalize(V+L);
+            float NdotL=max(dot(N,L),0.);
+            float NdotH=max(dot(N,H),0.);
+            float a2=.0000410;
+            float dd=NdotH*NdotH*(a2-1.)+1.;
+            float k=.0032;
+            float G=NdotL/(NdotL*(1.-k)+k)*NdotV/(NdotV*(1.-k)+k);
+            refl+=lightCol*smoothstep(.8,1.,skyVis)*waterFresnel(max(dot(V,H),0.))*a2/(3.14159265*dd*dd)*G/(4.*NdotV);
+
+            hdr+=refl;
         }
 
         color=vec4(hdr,1.);

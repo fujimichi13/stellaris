@@ -179,14 +179,15 @@
     }
 
     void main(){
+        ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 albedo=texture(colortex0,texcoord);
-        float depth=texture(depthtex0,texcoord).r;
+        float depth=texelFetch(depthtex0,px,0).r;
+        if(texelFetch(colortex13,px,0).w>.5) depth=texelFetch(depthtex1,px,0).r;
 
         color=albedo;
         color1=vec4(0.,0.,0.,1.);
         if(depth>=1.) return;
 
-        ivec2 px=ivec2(gl_FragCoord.xy);
         vec3 worldPos=worldSpacePosition(texcoord,depth);
 
         vec3 gc=cross(dFdx(worldPos),dFdy(worldPos));
