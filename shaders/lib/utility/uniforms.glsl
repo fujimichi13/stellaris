@@ -58,6 +58,8 @@
     uniform mat4 shadowModelView;
     uniform mat4 shadowModelViewInverse;
 
+    uniform vec2 taaJitter;
+
     uniform vec3 shadowLightPosition;
     uniform vec3 sunPosition;
 

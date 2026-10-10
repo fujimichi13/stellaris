@@ -1,9 +1,9 @@
 
 
-#ifdef vsh
+#include "/settings.glsl"
+#include "/lib/utility/uniforms.glsl"
 
-    uniform float viewWidth;
-    uniform float viewHeight;
+#ifdef vsh
 
     out vec4 glcolor;
 
@@ -24,14 +24,14 @@
 
         vec3 ndc=(gl_VertexID%2==0)?ndc0+vec3(offset,0.):ndc0-vec3(offset,0.);
         gl_Position=vec4(ndc*p0.w,p0.w);
+        #ifdef TAA_ENABLED
+            gl_Position.xy+=taaJitter*gl_Position.w;
+        #endif
     }
 
 #endif
 
 #ifdef fsh
-
-    #include "/settings.glsl"
-    #include "/lib/utility/uniforms.glsl"
 
     in vec4 glcolor;
 

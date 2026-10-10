@@ -1,5 +1,8 @@
 
 
+#include "/settings.glsl"
+#include "/lib/utility/uniforms.glsl"
+
 #ifdef vsh
 
     out vec4 glcolor;
@@ -7,14 +10,14 @@
     void main(){
         glcolor=gl_Color;
         gl_Position=gl_ProjectionMatrix*gl_ModelViewMatrix*gl_Vertex;
+        #ifdef TAA_ENABLED
+            gl_Position.xy+=taaJitter*gl_Position.w;
+        #endif
     }
 
 #endif
 
 #ifdef fsh
-
-    #include "/settings.glsl"
-    #include "/lib/utility/uniforms.glsl"
 
     in vec4 glcolor;
 

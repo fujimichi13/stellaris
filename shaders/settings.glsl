@@ -13,4 +13,8 @@
     #define WAVE_PARALLAX_STRENGTH 0.7
     #define WAVE_OCTAVES 6
 
+    #define TAA_ENABLED
+    #define TAA_BLENDWEIGHT 0.90 // [0.50 0.60 0.70 0.75 0.80 0.85 0.88 0.90 0.92 0.94 0.96 0.98]
+    #define TAA_AGGRESSION 0.50  // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00]
+
 #endif

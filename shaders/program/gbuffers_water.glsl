@@ -1,8 +1,9 @@
 
 
-#ifdef vsh
+#include "/settings.glsl"
+#include "/lib/utility/uniforms.glsl"
 
-    uniform mat4 gbufferModelViewInverse;
+#ifdef vsh
 
     in vec4 mc_Entity;
 
@@ -25,14 +26,15 @@
         vec4 viewPos=gl_ModelViewMatrix*gl_Vertex;
         vWorldPos=(gbufferModelViewInverse*viewPos).xyz;
         gl_Position=gl_ProjectionMatrix*viewPos;
+        #ifdef TAA_ENABLED
+            gl_Position.xy+=taaJitter*gl_Position.w;
+        #endif
     }
 
 #endif
 
 #ifdef fsh
 
-    #include "/settings.glsl"
-    #include "/lib/utility/uniforms.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/surface/brdf.glsl"
     #include "/lib/water/water.glsl"
