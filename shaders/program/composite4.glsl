@@ -99,7 +99,8 @@
                 vec4 hit=screenSpaceReflection(P+Nv*(.02-P.z*.004),D,Rw,bn2.x);
                 hit.a*=1.-smoothstep(.4*.5,.4,m.roughness);
 
-                float skyVis=lm.y*lm.y;
+                //float skyVis=lm.y*lm.y;
+                float skyVis=pow(lm.y,4.);
                 vec3 skyDiff=skyRadiance(normalize(N+vec3(0.,1.,0.)))/**SKY_AMBIENT*/*skyVis;
                 vec3 R=dominantReflection(N,Rm,m.roughness);
                 vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;

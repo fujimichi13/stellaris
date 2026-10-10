@@ -22,6 +22,9 @@
     const int colortex3Format = RGBA16F;
     const int colortex7Format = RGBA16F;
     const int colortex8Format = RGBA16F;
+
+    const bool shadowtex0Nearest = true;
+    const bool shadowtex1Nearest = true;
     */
 
     layout(r32ui) uniform uimage2D histX;
@@ -91,7 +94,8 @@
         float sinT=sqrt(max(1.-NdotL*NdotL,0.));
         float tanT=min(sinT/max(NdotL,.05),4.);
 
-        vec3 offsetPos=worldPos+n*texel*1.*(.5+sinT);
+        //vec3 offsetPos=worldPos+n*texel*1.*(.5+sinT);
+        vec3 offsetPos=worldPos+n*texel*1.5*(.5+sinT);
 
         vec4 c=toShadowClip(offsetPos);
         vec2 sampleSlope;
@@ -237,7 +241,8 @@
         evalDirectBRDF(m,N,V,L,dDiff,dSpec);
         vec3 direct=(dDiff+dSpec)*lightCol*vis2;
 
-        float skyVis=lm.y*lm.y;
+        //float skyVis=lm.y*lm.y;
+        float skyVis=pow(lm.y,4.);
         vec3 skyDiff=skyRadiance(normalize(N+vec3(0.,1.,0.)))*1.*skyVis;
         vec3 R=dominantReflection(N,reflect(-V,N),m.roughness);
         vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;

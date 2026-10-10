@@ -4,7 +4,7 @@
     vec3 RSM(vec3 worldPos, vec3 N){
         vec4 clip=toShadowClip(worldPos);
         vec2 clipPerWorld=vec2(abs(shadowProjection[0][0]),abs(shadowProjection[1][1]));
-        const float R=6.;
+        const float R=2.2;
         const int NS=12;
 
         vec2 bn=fract(bluenoise(gl_FragCoord.xy+vec2(37.,91.))+float(frameCounter&63)*vec2(.7548777,.5698403));
@@ -30,6 +30,18 @@
             vec3 dv=worldPos-xs;
             float d2=dot(dv,dv)+1.;
             float w=max(dot(ns,dv),0.)*max(dot(N,-dv),0.)/(d2*d2);
+
+            /*for(int k=1;k<=2;k++){
+                vec3 mp=mix(worldPos,xs,float(k)/3.);
+                vec4 cp=gbufferProjection*(gbufferModelView*vec4(mp,1.));
+                if(cp.w<=0.) continue;
+                vec3 ndc=cp.xyz/cp.w;
+                vec2 muv=ndc.xy*.5+.5;
+                if(any(lessThan(muv,vec2(0.)))||any(greaterThan(muv,vec2(1.)))) continue;
+                float sd=texture(depthtex1,muv).r*2.-1.;
+                float sw=gbufferProjection[3][2]/(sd+gbufferProjection[2][2]);
+                if(cp.w>sw*1.02+.15){ w=0.; break; }
+            }*/
 
             sum+=flux*w;
         }

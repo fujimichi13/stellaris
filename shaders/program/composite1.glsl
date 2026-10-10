@@ -89,7 +89,8 @@
         if(dot(nd.xyz,nd.xyz)<.25) return;
 
         float skyLm=texelFetch(colortex4,fp,0).g;
-        if(skyLm<.15) return;
+        //if(skyLm<.15) return;
+        if(skyLm<.5) return;
 
         vec3 N=normalize(nd.xyz);
         vec3 worldPos=worldSpacePosition((vec2(fp)+.5)/vec2(fullRes),depth);
