@@ -58,6 +58,7 @@
 
         vec3 bloom=upsampleTent9(colortex10,texcoord,1./vec2(textureSize(colortex10,0)),1.);
         vec3 hdr=c.rgb+bloom*(BLOOM_STRENGTH/.0625);
+        hdr*=exp2(texelFetch(colortex1,ivec2(0),0).r);
 
         color=vec4(AgX(hdr),c.a);
     }
