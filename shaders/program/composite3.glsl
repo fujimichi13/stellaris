@@ -1,89 +1,72 @@
 
 
-#ifdef vsh
+layout(local_size_x=256) in;
+const ivec3 workGroups=ivec3(1,1,1);
 
-    out vec2 texcoord;
+layout(r32ui) uniform uimage2D histX;
+layout(r32ui) uniform uimage2D histY;
+layout(r32f) uniform image2D warpX;
+layout(r32f) uniform image2D warpY;
 
-    void main(){
-        gl_Position=ftransform();
-        texcoord=(gl_TextureMatrix[0]*gl_MultiTexCoord0).xy;
+shared float sX[256];
+shared float sY[256];
+shared float scanX[256];
+shared float scanY[256];
+
+float loadX(int i){
+    return (i<0||i>=256)?0.:float(imageLoad(histX,ivec2(i,0)).r);
+}
+float loadY(int i){
+    return (i<0||i>=256)?0.:float(imageLoad(histY,ivec2(i,0)).r);
+}
+
+void main(){
+    int bin=int(gl_LocalInvocationID.x);
+
+    sX[bin]=loadX(bin);
+    sY[bin]=loadY(bin);
+    barrier();
+
+    float bx=sX[max(bin-2,0)]*float(bin>=2)
+            +2.*sX[max(bin-1,0)]*float(bin>=1)
+            +3.*sX[bin]
+            +2.*sX[min(bin+1,255)]*float(bin<=254)
+            +sX[min(bin+2,255)]*float(bin<=253);
+
+    float by=sY[max(bin-2,0)]*float(bin>=2)
+            +2.*sY[max(bin-1,0)]*float(bin>=1)
+            +3.*sY[bin]
+            +2.*sY[min(bin+1,255)]*float(bin<=254)
+            +sY[min(bin+2,255)]*float(bin<=253);
+    barrier();
+
+    scanX[bin]=bx;
+    scanY[bin]=by;
+    barrier();
+
+    for(int offset=1;offset<256;offset<<=1){
+        float ax=(bin>=offset)?scanX[bin-offset]:0.;
+        float ay=(bin>=offset)?scanY[bin-offset]:0.;
+        barrier();
+        scanX[bin]+=ax;
+        scanY[bin]+=ay;
+        barrier();
     }
 
-#endif
+    float totalX=scanX[255];
+    float totalY=scanY[255];
 
-#ifdef fsh
+    float uniformCdf=float(bin+1)/256.;
+    float measuredX=(totalX>0.)?scanX[bin]/totalX:uniformCdf;
+    float measuredY=(totalY>0.)?scanY[bin]/totalY:uniformCdf;
+    float targetX=mix(measuredX,uniformCdf,.3);
+    float targetY=mix(measuredY,uniformCdf,.3);
 
-    #include "/settings.glsl"
-    #include "/lib/utility/uniforms.glsl"
+    float oldX=imageLoad(warpX,ivec2(bin,0)).r;
+    float oldY=imageLoad(warpY,ivec2(bin,0)).r;
+    if(oldX<=0.) oldX=uniformCdf;
+    if(oldY<=0.) oldY=uniformCdf;
 
-    layout(r32ui) uniform uimage2D histX;
-    layout(r32ui) uniform uimage2D histY;
-    layout(r32f) uniform image2D warpX;
-    layout(r32f) uniform image2D warpY;
-
-    in vec2 texcoord;
-
-    /* RENDERTARGETS:1 */
-    layout(location = 0) out vec4 color;
-
-    float loadX(int i){
-        return (i<0||i>=256)?0.:float(imageLoad(histX,ivec2(i,0)).r);
-    }
-    float loadY(int i){
-        return (i<0||i>=256)?0.:float(imageLoad(histY,ivec2(i,0)).r);
-    }
-
-    float blurX(int i){
-        return loadX(i-2)+2.*loadX(i-1)+3.*loadX(i)+2.*loadX(i+1)+loadX(i+2);
-    }
-    float blurY(int i){
-        return loadY(i-2)+2.*loadY(i-1)+3.*loadY(i)+2.*loadY(i+1)+loadY(i+2);
-    }
-
-    float cdfX(int bin){
-        float total=0.;
-        float prefix=0.;
-        for(int i=0;i<256;i++){
-            float w=blurX(i);
-            total+=w;
-            if(i<=bin) prefix+=w;
-        }
-        float uniformCdf=float(bin+1)/float(256);
-        float measured=(total>0.)?prefix/total:uniformCdf;
-        return mix(measured,uniformCdf,.3);
-    }
-
-    float cdfY(int bin){
-        float total=0.;
-        float prefix=0.;
-        for(int i=0;i<256;i++){
-            float w=blurY(i);
-            total+=w;
-            if(i<=bin) prefix+=w;
-        }
-        float uniformCdf=float(bin+1)/float(256);
-        float measured=(total>0.0)?prefix/total:uniformCdf;
-        return mix(measured,uniformCdf,.3);
-    }
-
-    void main(){
-        ivec2 px=ivec2(gl_FragCoord.xy);
-
-        if(px.y==0&&px.x<256){
-            int bin=px.x;
-            float identity=float(bin+1)/float(256);
-
-            float oldX=imageLoad(warpX,ivec2(bin,0)).r;
-            float oldY=imageLoad(warpY,ivec2(bin,0)).r;
-
-            if(oldX<=0.) oldX=identity;
-            if(oldY<=0.) oldY=identity;
-
-            imageStore(warpX,ivec2(bin,0),vec4(mix(oldX,cdfX(bin),.05)));
-            imageStore(warpY,ivec2(bin,0),vec4(mix(oldY,cdfY(bin),.05)));
-        }
-
-        color=vec4(0.0);
-    }
-
-#endif
+    imageStore(warpX,ivec2(bin,0),vec4(mix(oldX,targetX,.05)));
+    imageStore(warpY,ivec2(bin,0),vec4(mix(oldY,targetY,.05)));
+}
