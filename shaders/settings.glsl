@@ -13,6 +13,12 @@
     #define WAVE_PARALLAX_STRENGTH 0.7
     #define WAVE_OCTAVES 6
 
+    #define WATER_FOG_DENSITY 1.0
+    #define WATER_FOG_SCATTERING 0.03
+
+    #define CAUSTICS_MAP_RES 512
+    #define CAUSTICS_MAP_BLOCKS 128.0
+
     #define GTAO_ENABLED
     #define GTAO_SLICE_COUNT 2 // [1 2 3 4 5 6 8]
     #define GTAO_DIRECTION_SAMPLE_COUNT 6 // [2 3 4 5 6 8 10 12 16]

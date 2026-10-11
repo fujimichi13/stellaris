@@ -51,6 +51,7 @@
 
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/water/water.glsl"    
+    #include "/lib/water/waterFog.glsl"
 
     int sur(ivec2 q, out vec3 n, out float rough){
         n=vec3(0.);
@@ -237,6 +238,106 @@
             refl+=lightCol*smoothstep(.8,1.,skyVis)*Fh*a2/(3.14159265*dd*dd)*G/(4.*NdotV);
 
             hdr+=refl;
+        }
+
+        if(isEyeInWater==1){
+            vec3 Pv=viewSpacePosition(texcoord,depth);
+            float dist=length(Pv);
+            vec3 dir=normalize(mat3(gbufferModelViewInverse)*Pv);
+
+            vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
+            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
+            vec3 lightCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,eyeAlt(cameraPosition.y)*.01))*smoothstep(-.04,.0,S.y)+vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 sky=texture(samplerSky,vec2(.5,.75)).rgb;
+
+            float camDepth=(1.-float(eyeBrightnessSmooth.y)/240.)*15.;
+
+            if(depth<1.&&wn.w>.5){
+                vec3 Ns=normalize(wn.xyz);
+                float skyBehind=step(1.,texelFetch(depthtex1,px,0).r);
+                float cosI=clamp(dot(-dir,Ns),0.,1.);
+                float sinT2=1.333*1.333*(1.-cosI*cosI);
+                float F=1.;
+                vec3 T=vec3(0.);
+                if(sinT2<1.){
+                    float cosT=sqrt(1.-sinT2);
+                    float rs=(1.333*cosI-cosT)/(1.333*cosI+cosT);
+                    float rp=(1.333*cosT-cosI)/(1.333*cosT+cosI);
+                    F=.5*(rs*rs+rp*rp);
+                    T=normalize(refract(dir,Ns,1.333));
+                }
+                vec3 outside=hdr;
+                if(F<1.&&skyBehind>.5){
+                    float el=max(asin(clamp(T.y,-1.,1.)),0.);
+                    outside=texture(samplerSky,vec2(atan(T.z,T.x)*.15915494+.5,sqrt(el*.63661977)*.5+.5)).rgb*(1.-.6*smoothstep(0.,-.4,T.y));
+                    outside+=lightCol*smoothstep(.9998,.99985,dot(T,L))*smoothstep(-.02,0.,T.y)*30.;
+                }
+                vec3 inside=calcWaterFog(vec3(0.),reflect(dir,Ns),256.,0.,L,lightCol,sky);
+                hdr=outside*(1.-F)+inside*F;
+            }
+
+            hdr=calcWaterFog(hdr,dir,dist,camDepth,L,lightCol,sky);
+
+            if(L.y>=.02){
+                vec3 sigS=vec3(WATER_FOG_SCATTERING);
+                vec3 sigT=vec3(.45,.07,.012)*WATER_FOG_DENSITY+sigS;
+
+                float cosL=sqrt(1.-(1.-L.y*L.y)/1.7778);
+                float sinL=sqrt(max(1.-cosL*cosL,0.));
+                float Fr=.02+.98*pow(1.-L.y,5.);
+                vec3 sunE=lightCol*(1.-Fr)*L.y/cosL;
+                float phase=.4375/(12.5663706*pow(1.5625-1.5*dot(L,dir),1.5));
+
+                float d=(dir.y>1e-3)?min(dist,camDepth/dir.y):dist;
+                d=min(d,3./min(sigT.x,min(sigT.y,sigT.z)));
+                float dt=d/20.;
+
+                float jitter=bluenoise(gl_FragCoord.xy+vec2(53.,7.)).x;
+                vec2 Lh=L.xz/max(length(L.xz),1e-4);
+                vec2 shadowRes=vec2(textureSize(shadowtex1,0));
+                float zBias=.75*abs(shadowProjection[2][2])*.5;
+
+                vec3 acc=vec3(0.);
+                for(int i=0;i<20;i++){
+                    float t=(float(i)+jitter)*dt;
+                    vec3 p=dir*t;
+                    float wd=max(camDepth-dir.y*t,0.);
+
+                    vec4 sc=shadowProjection*(shadowModelView*vec4(p,1.));
+                    vec3 ndc=sc.xyz/sc.w;
+                    vec2 suv=ndc.xy*.5+.5;
+                    vec2 wuv=suv;
+                    if(suv.x>0.&&suv.x<1.){
+                        float tx=suv.x*256.;
+                        int ix=min(int(tx),255);
+                        float hx=texelFetch(samplerWarpX,ivec2(ix,0),0).r;
+                        if(hx>0.) wuv.x=mix((ix==0)?0.:texelFetch(samplerWarpX,ivec2(ix-1,0),0).r,hx,tx-float(ix));
+                    }
+                    if(suv.y>0.&&suv.y<1.){
+                        float ty=suv.y*256.;
+                        int iy=min(int(ty),255);
+                        float hy=texelFetch(samplerWarpY,ivec2(iy,0),0).r;
+                        if(hy>0.) wuv.y=mix((iy==0)?0.:texelFetch(samplerWarpY,ivec2(iy-1,0),0).r,hy,ty-float(iy));
+                    }
+
+                    float vis=1.;
+                    float sz=ndc.z*.5+.5;
+                    if(all(greaterThan(wuv,vec2(0.)))&&all(lessThan(wuv,vec2(1.)))&&sz>0.&&sz<1.){
+                        float sd=texelFetch(shadowtex1,clamp(ivec2(wuv*shadowRes),ivec2(0),ivec2(shadowRes)-1),0).r;
+                        vis=(sz-zBias>sd)?0.:1.;
+                        vis=mix(1.,vis,1.-smoothstep(.85,1.,max(abs(ndc.x),abs(ndc.y))));
+                    }
+
+                    vec2 entry=cameraPosition.xz+p.xz+Lh*(sinL*wd/cosL);
+                    float wn2=.6*texture(noisetex,fract(entry*.035+frameTimeCounter*vec2(.02,.012))).z
+                             +.4*texture(noisetex,fract(entry*.11-frameTimeCounter*vec2(.03,.01)+.37)).z;
+                    float focus=mix(1.,2.*smoothstep(.3,.7,wn2),.6);
+
+                    acc+=exp(-sigT*(wd/cosL+t))*(vis*focus-1.);
+                }
+
+                hdr=max(hdr+sigS*sunE*phase*acc*dt,0.);
+            }
         }
 
         color=vec4(hdr,1.);

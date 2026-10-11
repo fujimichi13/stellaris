@@ -246,6 +246,31 @@
         evalDirectBRDF(m,N,V,L,dDiff,dSpec);
         vec3 direct=(dDiff+dSpec)*lightCol*vis2;
 
+        {
+            float cH=0.;
+            float wnw=texelFetch(colortex13,px,0).w;
+            if(isEyeInWater==1){
+                cH=(1.-float(eyeBrightnessSmooth.y)/240.)*15.-worldPos.y;
+            }else if(wnw>.5){
+                cH=worldSpacePosition(texcoord,texelFetch(depthtex0,px,0).r).y-worldPos.y;
+            }
+            if(cH>0.&&L.y>=.05){
+                float cosL=sqrt(1.-(1.-L.y*L.y)/1.7778);
+                float tanL=sqrt(max(1.-cosL*cosL,0.))/cosL;
+                vec2 Lh=L.xz/max(length(L.xz),1e-4);
+                vec2 cp=worldPos.xz+cameraPosition.xz+Lh*(tanL*cH);
+                float cts=CAUSTICS_MAP_BLOCKS/float(CAUSTICS_MAP_RES);
+                vec2 cuv=(cp-(floor(cameraPosition.xz/cts)*cts-.5*CAUSTICS_MAP_BLOCKS))/CAUSTICS_MAP_BLOCKS;
+                float cedge=min(min(cuv.x,1.-cuv.x),min(cuv.y,1.-cuv.y));
+                if(cedge>0.){
+                    vec4 A=textureLod(samplerCaustic,cuv,0.);
+                    float det=(1.+cH*A.x)*(1.+cH*A.w)-cH*cH*A.y*A.z;
+                    float cc=sqrt(1.0225/(det*det+.0225));
+                    direct*=mix(1.,cc,(1.-smoothstep(12.,32.,cH))*smoothstep(0.,.1,cedge));
+                }
+            }
+        }
+
         float skyVis=skyVisibility(lm.y);
         vec3 skyDiff=skyRadiance(skyDiffuseDir(N))*1.*skyVis*skyHemisphere(N);
         vec3 R=doreflc(N,reflect(-V,N),m.roughness);

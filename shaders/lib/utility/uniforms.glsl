@@ -36,6 +36,7 @@
 
     uniform sampler2D samplerTransmittance;
     uniform sampler2D samplerSky;
+    uniform sampler2D samplerCaustic;
     
     uniform sampler2D samplerWarpX;
     uniform sampler2D samplerWarpY;
