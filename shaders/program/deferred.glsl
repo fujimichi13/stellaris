@@ -16,11 +16,13 @@
     #include "/settings.glsl"
     #include "/lib/utility/uniforms.glsl"
     #include "/lib/atmosphere/scattering.glsl"
+    #include "/lib/lighting/gtao.glsl"
 
     in vec2 texcoord;
 
-    /* RENDERTARGETS:0 */
+    /* RENDERTARGETS:0,4 */
     layout(location = 0) out vec4 color;
+    layout(location = 1) out vec4 color4;
 
     vec3 worldSpacePosition(vec2 uv, float depth){
         vec4 clip=vec4(uv*2.-1.,depth*2.-1.,1.);
@@ -42,6 +44,15 @@
         float depth=texture(depthtex0,texcoord).r;
 
         color=albedo;
+
+        ivec2 px=ivec2(gl_FragCoord.xy);
+        vec2 lm=texelFetch(colortex4,px,0).rg;
+        float ao=1.;
+        #ifdef GTAO_ENABLED
+            ao=c(px,depth);
+        #endif
+        color4=vec4(lm,ao,1.);
+
         if(depth<1.) return;
 
         vec3 V=normalize(worldSpacePosition(texcoord,depth));

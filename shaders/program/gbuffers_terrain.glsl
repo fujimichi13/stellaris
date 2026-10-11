@@ -59,6 +59,7 @@
         }
 
         vec4 spec=texture(specular,texcoord);
+        spec.g=textureLod(specular,texcoord,0.).g;
         vec4 nt=texture(normals,texcoord);
 
         float ao;

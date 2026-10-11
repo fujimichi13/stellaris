@@ -20,8 +20,9 @@
 
     in vec2 texcoord;
 
-    /* RENDERTARGETS:0 */
+    /* RENDERTARGETS:0,7 */
     layout(location = 0) out vec4 color;
+    layout(location = 1) out vec4 color1;
 
     vec3 ACES(vec3 v){
         v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
@@ -61,7 +62,11 @@
         vec4 wgt=texelFetch(colortex7,px,0);
         vec4 wn=texelFetch(colortex13,px,0);
 
-        if(wgt.a>.5){
+        color1=vec4(texelFetch(colortex0,px,0).rgb,1.);
+
+        bool skyPx=wgt.a>.5;
+        bool glassPx=wn.w<-.5;
+        if(skyPx&&!glassPx){
             color=base;
             return;
         }
@@ -69,12 +74,13 @@
         vec3 gi=vec3(0.);
 
         #ifdef RSM_ENABLED
+          if(!skyPx){
             ivec2 fullRes=textureSize(colortex3,0);
             ivec2 hres=fullRes>>1;
             ivec2 hp=px>>1;
 
             float depth=texelFetch(depthtex0,px,0).r;
-            if(wn.w>.5) depth=texelFetch(depthtex1,px,0).r;
+            if(abs(wn.w)>.5) depth=texelFetch(depthtex1,px,0).r;
             vec4 v=gbufferProjectionInverse*vec4(texcoord*2.-1.,depth*2.-1.,1.);
             float d0=length((gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz);
             vec3 n0=normalize(texelFetch(colortex3,px,0).xyz);
@@ -109,6 +115,7 @@
 
             gi=(wsum>1e-4)?sum/wsum:h0.rgb;
             gi*=wgt.rgb;
+          }
         #endif
 
         vec3 hdr=base.rgb+gi;
@@ -165,6 +172,57 @@
             vec3 scat=(sunE*(1.-exp(-kS*th))/kS+skyE*(1.-exp(-kA*th))/kA)*.0015/3.14159;
 
             hdr=(under+scat)*(1.-waterFresnel(dot(N,V)));
+        }
+
+        if(glassPx&&depth0<1.){
+            vec4 tl=texelFetch(colortex14,px,0);
+            vec3 tint=pow(tl.rgb,vec3(2.2));
+            float alpha=tl.a;
+
+            float code=floor(-wn.w);
+            float skyLm=fract(-wn.w)/.99;
+            float thick=(code<1.5)?.125:((code<2.5)?1.:.5);
+
+            vec3 N=normalize(wn.xyz);
+            vec3 Pg=worldSpacePosition(texcoord,depth0);
+            vec3 D=normalize(Pg);
+
+            float depth1=texelFetch(depthtex1,px,0).r;
+            vec3 Q0=(depth1<1.)?worldSpacePosition(texcoord,depth1):Pg+D*64.;
+
+            vec2 uvR=texcoord;
+            vec3 T=refract(D,N,1./1.52);
+            float cosT=max(-dot(T,N),.05);
+            vec3 inside=T*(thick/cosT);
+            vec3 shift=(inside-D*dot(inside,D))*float(1.);
+
+            vec4 cp=gbufferProjection*(gbufferModelView*vec4(Q0+shift,1.));
+            if(cp.w>0.){
+                vec2 u=cp.xy/cp.w*.5+.5;
+                float edge=min(min(u.x,1.-u.x),min(u.y,1.-u.y));
+                uvR=mix(texcoord,u,smoothstep(0.,.05,edge));
+            }
+            if(texture(depthtex1,uvR).r<depth0-1e-5) uvR=texcoord;
+
+            vec3 under=texture(colortex8,uvR).rgb+gi;
+
+            float NdotV=max(dot(N,-D),.001);
+            float c5=1.-NdotV;
+            float F=.04+.96*c5*c5*c5*c5*c5;
+
+            vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
+            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
+            float alt=eyeAlt(cameraPosition.y);
+            vec3 sunCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*smoothstep(-.04,.0,S.y);
+            vec3 moonCol=vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 lightCol=sunCol+moonCol;
+            vec3 sky=texture(samplerSky,vec2(.5,.75)).rgb;
+
+            float outdoors=skyLm*skyLm*skyLm*skyLm;
+            vec3 scat=tint*alpha*outdoors*(sky*.8+lightCol*abs(dot(N,L))*.32);
+
+            vec3 transmit=mix(vec3(1.),tint,alpha);
+            hdr=under*transmit*(1.-F)+scat;
         }
 
         //color=vec4(pow(ACES(hdr),vec3(.4545455)),base.a);

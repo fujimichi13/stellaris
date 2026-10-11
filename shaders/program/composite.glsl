@@ -17,6 +17,7 @@
     #include "/lib/utility/uniforms.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/surface/brdf.glsl"
+    #include "/lib/lighting/gtao.glsl"
 
     /*
     const int colortex3Format = RGBA16F;
@@ -186,7 +187,7 @@
         ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 albedo=texture(colortex0,texcoord);
         float depth=texelFetch(depthtex0,px,0).r;
-        if(texelFetch(colortex13,px,0).w>.5) depth=texelFetch(depthtex1,px,0).r;
+        if(abs(texelFetch(colortex13,px,0).w)>.5) depth=texelFetch(depthtex1,px,0).r;
 
         color=albedo;
         color1=vec4(0.,0.,0.,1.);
@@ -226,6 +227,10 @@
         Material m=decodeLabPBR(spec,albedoLin);
         m.ao=nd.w;
 
+        #ifdef GTAO_ENABLED
+            m.ao*=calcGTAO(px,albedoLin);
+        #endif
+
         vec3 V=-normalize(worldPos);
 
         vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
@@ -241,21 +246,25 @@
         evalDirectBRDF(m,N,V,L,dDiff,dSpec);
         vec3 direct=(dDiff+dSpec)*lightCol*vis2;
 
-        //float skyVis=lm.y*lm.y;
-        float skyVis=pow(lm.y,4.);
-        vec3 skyDiff=skyRadiance(normalize(N+vec3(0.,1.,0.)))*1.*skyVis;
-        vec3 R=dominantReflection(N,reflect(-V,N),m.roughness);
+        float skyVis=skyVisibility(lm.y);
+        vec3 skyDiff=skyRadiance(skyDiffuseDir(N))*1.*skyVis*skyHemisphere(N);
+        vec3 R=doreflc(N,reflect(-V,N),m.roughness);
         vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;
         skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
         vec3 ambient=evalAmbient(m,N,V,skyDiff,skyEnv);
 
+        vec3 sa=specalbedo(m,max(dot(N,V),1e-3));
+        float specW=idrspecweight(m.roughness);
+
         float bl=pow(lm.x,4.);
-        vec3 blockDiff=m.diffuse*vec3(1.,.52,.22)*24.*bl*m.ao;
+        vec3 blockLight=vec3(1.,.52,.22)*24.*bl*m.ao;
+        vec3 blockDiff=m.diffuse*blockLight;
+        vec3 blockSpec=sa*specW*blockLight;
         vec3 emissive=m.albedo*m.emission*16.;
 
-        color1=vec4(lightCol*m.diffuse*m.ao*skyVis*7.,0.);
+        color1=vec4(lightCol*(m.diffuse+sa*specW)*m.ao*skyVis*7.,0.);
 
-        vec3 hdr=direct+ambient+blockDiff+emissive;
+        vec3 hdr=direct+ambient+blockDiff+blockSpec+emissive;
         color=vec4(hdr,albedo.a);
     }
 

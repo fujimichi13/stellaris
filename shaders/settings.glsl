@@ -13,6 +13,14 @@
     #define WAVE_PARALLAX_STRENGTH 0.7
     #define WAVE_OCTAVES 6
 
+    #define GTAO_ENABLED
+    #define GTAO_SLICE_COUNT 2 // [1 2 3 4 5 6 8]
+    #define GTAO_DIRECTION_SAMPLE_COUNT 6 // [2 3 4 5 6 8 10 12 16]
+    #define GTAO_SEARCH_RADIUS 1.5 // [0.25 0.5 0.75 1.0 1.5 2.0 2.5 3.0 4.0 6.0]
+    #define GTAO_INTENSITY 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 2.0 2.5 3.0]
+
+    #define SKYLIGHT_CURVE 6.0 // [3.0 4.0 5.0 6.0 8.0 10.0 12.0]
+
     #define TAA_ENABLED
     #define TAA_BLENDWEIGHT 0.90 // [0.50 0.60 0.70 0.75 0.80 0.85 0.88 0.90 0.92 0.94 0.96 0.98]
     #define TAA_AGGRESSION 0.50  // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00]

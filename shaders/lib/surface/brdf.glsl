@@ -3,6 +3,17 @@
 
     #define saturate(x) clamp(x,0.,1.)
 
+    #define skyVisibility(l) (pow(l,SKYLIGHT_CURVE)*pow(.9667,4.-SKYLIGHT_CURVE))
+
+    vec3 skyDiffuseDir(vec3 N){
+        vec3 d=N+vec3(0.,1.,0.);
+        return (dot(d,d)<1e-3)?vec3(0.,1.,0.):normalize(d);
+    }
+
+    float skyHemisphere(vec3 N){
+        return mix(.05,1.,smoothstep(-1.,0.,N.y));
+    }
+
     const float PI=3.14159265;
 
     struct Material{
@@ -139,11 +150,20 @@
         return 1.+F0*(1./max(ab.x+ab.y,1e-3)-1.);
     }
 
-    float specOcclusion(float NoV,float ao,float r){
+    vec3 specalbedo(Material m,float NoV){
+        vec2 ab=envBRDF(m.roughness,NoV);
+        return (m.F0*ab.x+f90From(m.F0)*ab.y)*msComp(m.F0,ab);
+    }
+
+    float idrspecweight(float roughness){
+        return mix(.25,1.,roughness);
+    }
+
+    float specocc(float NoV,float ao,float r){
         return saturate(pow(NoV+ao,exp2(-16.*r-1.))-1.+ao);
     }
 
-    vec3 dominantReflection(vec3 N,vec3 R,float r){
+    vec3 doreflc(vec3 N,vec3 R,float r){
         float a=r*r;
         return normalize(mix(N,R,(1.-a)*(sqrt(1.-a)+a)));
     }
@@ -173,7 +193,7 @@
         float NoV=max(dot(N,V),1e-3);
         vec2 ab=envBRDF(m.roughness,NoV);
         vec3 sa=(m.F0*ab.x+f90From(m.F0)*ab.y)*msComp(m.F0,ab);
-        float so=specOcclusion(NoV,m.ao,m.roughness);
+        float so=specocc(NoV,m.ao,m.roughness);
         return m.diffuse*(1.-sa)*skyDiffuse*m.ao+sa*skyEnv*so;
     }
 

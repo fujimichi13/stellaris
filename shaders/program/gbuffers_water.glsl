@@ -13,6 +13,7 @@
     out vec3 vNormal;
     out vec3 vWorldPos;
     out float iswater;
+    out float isglass;
 
     void main(){
         glcolor=gl_Color;
@@ -20,6 +21,7 @@
         vlightmap=(gl_TextureMatrix[1]*gl_MultiTexCoord1).xy;
 
         iswater=(abs(mc_Entity.x-1.)<.5)?1.:0.;
+        isglass=(abs(mc_Entity.x-3.)<.5)?1.:((abs(mc_Entity.x-2.)<.5)?2.:3.);
 
         vNormal=normalize(mat3(gbufferModelViewInverse)*(gl_NormalMatrix*gl_Normal));
 
@@ -50,6 +52,7 @@
     in vec3 vNormal;
     in vec3 vWorldPos;
     in float iswater;
+    in float isglass;
 
     /* RENDERTARGETS: 13,14 */
     layout(location = 0) out vec4 color;
@@ -61,7 +64,11 @@
 
         if(iswater<.5){
             if(albedo.a<.05) discard;
-            color=vec4(0.);
+
+            vec3 Ng0=normalize(vNormal);
+            if(dot(Ng0,-vWorldPos)<0.) Ng0=-Ng0;
+
+            color=vec4(Ng0,-(floor(isglass+.5)+lm.y*.99));
             color1=albedo;
             return;
         }
