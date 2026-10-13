@@ -40,12 +40,12 @@
     }
 
     void main(){
-        vec4 albedo=texture(colortex0,texcoord);
-        float depth=texture(depthtex0,texcoord).r;
+        ivec2 px=ivec2(gl_FragCoord.xy);
+        vec4 albedo=texelFetch(colortex0,px,0);
+        float depth=texelFetch(depthtex0,px,0).r;
 
         color=albedo;
 
-        ivec2 px=ivec2(gl_FragCoord.xy);
         vec2 lm=texelFetch(colortex4,px,0).rg;
         float ao=1.;
         #ifdef GTAO_ENABLED

@@ -1,11 +1,11 @@
 #ifndef GTAO_GLSL
     #define GTAO_GLSL a
 
-    #define PI 3.14159265
-    #define H_PI 1.57079633
+    #include "/lib/utility/math.glsl"
+    #include "/lib/utility/dithering.glsl"
 
     vec3 viewPos(ivec2 px, float depth){
-        vec2 uv=(vec2(px)+.5)/vec2(viewWidth,viewHeight);
+        vec2 uv=(vec2(px)+.5)/RRES;
         vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
         return v.xyz/v.w;
     }
@@ -18,14 +18,6 @@
         return d>.56&&d<1.;
     }
 
-    float bayer4(ivec2 p){
-        return (float(int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5)[(p.y&3)*4+(p.x&3)])+.5)/16.;
-    }
-
-    float ign(ivec2 p){
-        return fract(52.9829189*fract(dot(vec2(p),vec2(.06711056,.00583715))));
-    }
-
     float fastAcos(float x){
         float a=abs(x);
         float r=sqrt(max(1.-a,0.))*(1.5707288+a*(-.2121144+a*(.0742610+a*-.0187293)));
@@ -33,7 +25,7 @@
     }
 
     vec3 viewnormal(ivec2 px, vec3 P, float d){
-        ivec2 res=ivec2(viewWidth,viewHeight);
+        ivec2 res=ivec2(RRES);
         ivec2 l=clamp(px-ivec2(1,0),ivec2(0),res-1);
         ivec2 r=clamp(px+ivec2(1,0),ivec2(0),res-1);
         ivec2 b=clamp(px-ivec2(0,1),ivec2(0),res-1);
@@ -60,14 +52,14 @@
     float c(ivec2 px, float depth){
         if(!validDepth(depth)) return 1.;
 
-        ivec2 res=ivec2(viewWidth,viewHeight);
+        ivec2 res=ivec2(RRES);
         vec3 P=viewPos(px,depth);
         float viewDist=length(P);
         vec3 V=-P/viewDist;
         vec3 N=viewnormal(px,P,depth);
 
         const float radius=float(GTAO_SEARCH_RADIUS);
-        float pxRadius=radius*gbufferProjection[1][1]*.5*viewHeight/max(-P.z,1e-3);
+        float pxRadius=radius*gbufferProjection[1][1]*.5*RRES.y/max(-P.z,1e-3);
         pxRadius=min(pxRadius,256.);
         if(pxRadius<1.5) return 1.;
 
@@ -157,7 +149,7 @@
     }
 
     float gfilter(ivec2 px){
-        ivec2 res=ivec2(viewWidth,viewHeight);
+        ivec2 res=ivec2(RRES);
 
         float dc=texelFetch(depthtex1,px,0).r;
         float centerAO=texelFetch(colortex4,px,0).b;

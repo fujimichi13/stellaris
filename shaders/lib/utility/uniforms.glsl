@@ -2,6 +2,7 @@
     #define UNIFORMS_GLSL a
 
     uniform sampler2D noisetex;
+    uniform sampler2D noisetex1;
 
     uniform sampler2D colortex0;
     uniform sampler2D colortex1;
@@ -44,6 +45,7 @@
     uniform float viewWidth;
     uniform float viewHeight;
     uniform float frameTimeCounter;
+    uniform float rainStrength;
 
     uniform int frameCounter;
     uniform int isEyeInWater;
@@ -68,4 +70,23 @@
     uniform vec3 previousCameraPosition;
 
     uniform ivec2 eyeBrightnessSmooth;
+
+    #ifdef TAAU_ENABLED
+        #define RS (TAAU_RENDER_SCALE)
+    #else
+        #define RS 1.
+    #endif
+    #define RRES (vec2(viewWidth,viewHeight)*RS)
+
+    vec2 rUV(vec2 uv){
+        return min(uv*RS,(RRES-.5)/vec2(viewWidth,viewHeight));
+    }
+
+    vec4 taaClip(vec4 p){
+        #ifdef TAAU_ENABLED
+            p.xy+=taaJitter*p.w;
+            p.xy=p.xy*RS+p.w*(RS-1.);
+        #endif
+        return p;
+    }
 #endif

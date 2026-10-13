@@ -27,10 +27,7 @@
         vTangent=T;
         vBitangent=B;
 
-        gl_Position=gl_ProjectionMatrix*gl_ModelViewMatrix*gl_Vertex;
-        #ifdef TAA_ENABLED
-            gl_Position.xy+=taaJitter*gl_Position.w;
-        #endif
+        gl_Position=taaClip(gl_ProjectionMatrix*gl_ModelViewMatrix*gl_Vertex);
     }
 
 #endif
@@ -53,14 +50,14 @@
     layout(location = 3) out vec4 color4;
 
     void main(){
-        vec4 albedo=texture(tex,texcoord)*glcolor;
+        vec4 albedo=texture(tex,texcoord,log2(RS))*glcolor;
         if(albedo.a<.1){
             discard;
         }
 
-        vec4 spec=texture(specular,texcoord);
+        vec4 spec=texture(specular,texcoord,log2(RS));
         spec.g=textureLod(specular,texcoord,0.).g;
-        vec4 nt=texture(normals,texcoord);
+        vec4 nt=texture(normals,texcoord,log2(RS));
 
         float ao;
         vec3 N=decodeLabPBRNormal(nt,mat3(normalize(vTangent),normalize(vBitangent),normalize(vNormal)),ao);

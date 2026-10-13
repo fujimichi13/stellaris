@@ -1,7 +1,7 @@
 #ifndef BRDF_GLSL
     #define BRDF_GLSL
 
-    #define saturate(x) clamp(x,0.,1.)
+    #include "/lib/utility/math.glsl"
 
     #define skyVisibility(l) (pow(l,SKYLIGHT_CURVE)*pow(.9667,4.-SKYLIGHT_CURVE))
 
@@ -13,8 +13,6 @@
     float skyHemisphere(vec3 N){
         return mix(.05,1.,smoothstep(-1.,0.,N.y));
     }
-
-    const float PI=3.14159265;
 
     struct Material{
         vec3 albedo;
@@ -51,11 +49,6 @@
         vec3(4.2655,3.7153,3.1365),
         vec3(3.9291,3.19,2.3808)
     );
-
-    float pow5(float x){
-        float x2=x*x;
-        return x2*x2*x;
-    }
 
     vec3 fresnelConductor(float c,vec3 n,vec3 k){
         float c2=c*c;

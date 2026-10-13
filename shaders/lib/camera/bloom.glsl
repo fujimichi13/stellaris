@@ -66,7 +66,7 @@
             if (any(greaterThanEqual(px,size))) return;
 
             vec2 uv=(vec2(px)+.5)/vec2(size);
-            vec3 hdr=texture(colortex8,uv).rgb*.0625;
+            vec3 hdr=texture(colortex0,uv).rgb*.0625;
             if (any(isnan(hdr))) hdr=vec3(0.0);
             imageStore(colorimg9,px,vec4(softThreshold(max(hdr,.0)),1.));
         }

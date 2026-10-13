@@ -27,10 +27,7 @@
 
         vec4 viewPos=gl_ModelViewMatrix*gl_Vertex;
         vWorldPos=(gbufferModelViewInverse*viewPos).xyz;
-        gl_Position=gl_ProjectionMatrix*viewPos;
-        #ifdef TAA_ENABLED
-            gl_Position.xy+=taaJitter*gl_Position.w;
-        #endif
+        gl_Position=taaClip(gl_ProjectionMatrix*viewPos);
     }
 
 #endif

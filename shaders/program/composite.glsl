@@ -15,9 +15,13 @@
 
     #include "/settings.glsl"
     #include "/lib/utility/uniforms.glsl"
+    #include "/lib/utility/math.glsl"
+    #include "/lib/utility/dithering.glsl"
+    #include "/lib/utility/space.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/surface/brdf.glsl"
     #include "/lib/lighting/gtao.glsl"
+    #include "/lib/atmosphere/volumetricClouds.glsl"
 
     /*
     const int colortex3Format = RGBA16F;
@@ -67,21 +71,9 @@
         return w*2.-1.;
     }
 
-    vec3 worldSpacePosition(vec2 uv, float depth){
-        vec4 clip=vec4(uv*2.-1.,depth*2.-1.,1.);
-        vec4 viewSpace=gbufferProjectionInverse*clip;
-        viewSpace/=viewSpace.w;
-        vec4 worldSpace=gbufferModelViewInverse*viewSpace;
-        return worldSpace.xyz;
-    }
-
     vec4 toShadowClip(vec3 worldPos){
         vec4 c=shadowProjection*(shadowModelView*vec4(worldPos,1.));
         return vec4(c.xyz/c.w,1.);
-    }
-
-    vec2 bluenoise(vec2 fragCoord){
-        return texelFetch(noisetex,ivec2(fragCoord)&127,0).rg;
     }
 
     vec3 sampleShadow(vec3 worldPos, vec3 n, float NdotL){
@@ -117,7 +109,7 @@
         float z=sp.z-zBias;
 
         float texelUV=1./float(shadowMapResolution);
-        vec2 bn=bluenoise(gl_FragCoord.xy)*6.2831853;
+        vec2 bn=bluenoiseStatic(gl_FragCoord.xy)*TAU;
 
         //blocker
         vec2 searchUV=min(depthRange*.0047*sampleSlope/ortho,vec2(64.*texelUV));
@@ -177,21 +169,21 @@
         return mix(vec3(1.),vis,fade);
     }
 
-    vec3 skyRadiance(vec3 d){
-        float t=max(asin(clamp(d.y,-1.,1.)),0.);
-        vec3 s=texture(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,sqrt(t*.63661977)*.5+.5)).rgb;
-        return s*(1.-.6*smoothstep(0.,-.4,d.y));
-    }
-
     void main(){
         ivec2 px=ivec2(gl_FragCoord.xy);
-        vec4 albedo=texture(colortex0,texcoord);
+        vec4 albedo=texelFetch(colortex0,px,0);
         float depth=texelFetch(depthtex0,px,0).r;
         if(abs(texelFetch(colortex13,px,0).w)>.5) depth=texelFetch(depthtex1,px,0).r;
 
         color=albedo;
         color1=vec4(0.,0.,0.,1.);
-        if(depth>=1.) return;
+        if(depth>=1.){
+            #ifdef VOLUMETRIC_CLOUDS
+                vec4 cl=volumetricClouds(normalize(worldSpacePosition(texcoord,1.)),CLOUD_RAY_STEPS);
+                color=vec4(albedo.rgb*(1.-cl.a)+cl.rgb,albedo.a);
+            #endif
+            return;
+        }
 
         vec3 worldPos=worldSpacePosition(texcoord,depth);
 
@@ -199,7 +191,7 @@
         vec3 ng=gc/max(length(gc),1e-8);
         if(dot(ng,worldPos)>0.) ng=-ng;
 
-        vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
+        vec3 L=lightDirection();
         float NdotLg=clamp(dot(ng,L),0.,1.);
 
         vec4 shadowClip=toShadowClip(worldPos);
@@ -233,11 +225,7 @@
 
         vec3 V=-normalize(worldPos);
 
-        vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
-        float alt=eyeAlt(cameraPosition.y);
-        vec3 sunCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*1.*smoothstep(-.04,.0,S.y);
-        vec3 moonCol=vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
-        vec3 lightCol=sunCol+moonCol;
+        vec3 lightCol=lightColor(sunDirection());
 
         vec3 vis2=visC*smoothstep(0.,.1,NdotLg);
         vis2=mix(vis2,visC*.5,m.sss*step(NdotLg,.001));
@@ -274,7 +262,7 @@
         float skyVis=skyVisibility(lm.y);
         vec3 skyDiff=skyRadiance(skyDiffuseDir(N))*1.*skyVis*skyHemisphere(N);
         vec3 R=doreflc(N,reflect(-V,N),m.roughness);
-        vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;
+        vec3 skyEnv=mix(volumetricCloudsrfl(skyRadiance(R),R,skyVis,m.roughness),skyDiff,m.roughness)*skyVis;
         skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
         vec3 ambient=evalAmbient(m,N,V,skyDiff,skyEnv);
 

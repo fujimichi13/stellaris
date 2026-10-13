@@ -2,7 +2,7 @@
     #define SSR_GLSL a
 
     vec4 screenSpaceReflection(vec3 P,vec3 D,vec3 Dw,float jit){
-        vec2 res=vec2(textureSize(depthtex0,0));
+        vec2 res=RRES;
 
         float len=128.;
         if(D.z>0.) len=min(len,(-.05-P.z)/D.z);
@@ -56,7 +56,7 @@
                     vec2 uv=(vec2(hpx)+.5)/res;
                     vec2 e=min(uv,1.-uv);
                     float edge=smoothstep(0.,.1,min(e.x,e.y));
-                    vec3 c=min(texture(colortex0,uv).rgb,vec3(64.));
+                    vec3 c=min(texture(colortex0,rUV(uv)).rgb,vec3(64.));
                     return vec4(c,edge);
                 }
             }

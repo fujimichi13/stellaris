@@ -60,7 +60,7 @@
 
         if(pc.w>0.){
             vec2 puv=pc.xy/pc.w*.5+.5;
-            vec2 res=vec2(textureSize(colortex5,0))*.5;
+            vec2 res=RRES*.5;
             vec2 pp=puv*res-.5;
             ivec2 b=ivec2(floor(pp));
             vec2 f=fract(pp);

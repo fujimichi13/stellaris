@@ -67,38 +67,49 @@
     }
 
     void main(){
-        ivec2 px=ivec2(gl_FragCoord.xy);
-        vec4 cur=texelFetch(colortex0,px,0);
+        vec2 fres=vec2(viewWidth,viewHeight);
+        vec2 rr=RRES;
+        ivec2 rres=ivec2(rr);
+        vec2 jit=taaJitter*.5*rr;
 
-        if(any(isnan(cur.rgb))) cur.rgb=vec3(0.);
-
-        ivec2 res=ivec2(viewWidth,viewHeight);
-        vec2 fres=vec2(res);
+        vec2 o=texcoord*rr;
+        ivec2 p0=ivec2(floor(o));
 
         vec3 mean=vec3(0.),m2=vec3(0.),mn=vec3(1e5),mx=vec3(-1e5);
+        vec3 acc=vec3(0.);
+        float wsum=0.;
         float closest=2.;
-        ivec2 closestOff=ivec2(0);
+        ivec2 closestQ=clamp(p0,ivec2(0),rres-1);
         for(int y=-1;y<=1;y++){
             for(int x=-1;x<=1;x++){
-                ivec2 q=clamp(px+ivec2(x,y),ivec2(0),res-1);
-                vec3 s=compress(max(texelFetch(colortex0,q,0).rgb,0.));
+                ivec2 q=clamp(p0+ivec2(x,y),ivec2(0),rres-1);
+                vec3 sc=texelFetch(colortex0,q,0).rgb;
+                if(any(isnan(sc))) sc=vec3(0.);
+                vec3 s=compress(max(sc,0.));
                 mean+=s; m2+=s*s;
                 mn=min(mn,s); mx=max(mx,s);
-                float d=texelFetch(depthtex0,q,0).r;
-                if(d<closest){ closest=d; closestOff=ivec2(x,y); }
+
+                vec2 d=vec2(q)+.5-jit-o;
+                float w=exp(-2.29*dot(d,d));
+                acc+=s*w;
+                wsum+=w;
+
+                float dq=texelFetch(depthtex0,q,0).r;
+                if(dq<closest){ closest=dq; closestQ=q; }
             }
         }
         mean/=9.;
         vec3 sigma=sqrt(max(m2/9.-mean*mean,0.));
+        vec3 curC=acc/max(wsum,1e-5);
+        float curA=texelFetch(colortex0,clamp(p0,ivec2(0),rres-1),0).a;
 
-        vec2 uvC=(vec2(px+closestOff)+.5)/fres;
+        vec2 uvC=(vec2(closestQ)+.5)/rr-taaJitter*.5;
         vec2 prevUV;
         bool ok=true;
         if(closest<.56){
             prevUV=texcoord;
         }else{
-            vec2 ndc=uvC*2.-1.-taaJitter;
-            vec4 v=gbufferProjectionInverse*vec4(ndc,closest*2.-1.,1.);
+            vec4 v=gbufferProjectionInverse*vec4(uvC*2.-1.,closest*2.-1.,1.);
             vec3 wp=(gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz;
             if(closest<1.) wp+=cameraPosition-previousCameraPosition;
             vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(wp,1.));
@@ -108,11 +119,10 @@
         }
         ok=ok&&all(greaterThan(prevUV,vec2(0.)))&&all(lessThan(prevUV,vec2(1.)));
 
-        float hA=texelFetch(colortex15,clamp(ivec2(prevUV*fres),ivec2(0),res-1),0).a;
+        float hA=texelFetch(colortex15,clamp(ivec2(prevUV*fres),ivec2(0),ivec2(fres)-1),0).a;
         vec3 hRaw=sampleHistory(prevUV,fres);
         if(any(isnan(hRaw))) ok=false;
 
-        vec3 curC=compress(max(cur.rgb,0.));
         vec3 hC=compress(hRaw);
 
         float aggr=clamp(TAA_AGGRESSION,0.,1.);
@@ -122,14 +132,14 @@
         vec3 hc=clipAABB((lo+hi)*.5,(hi-lo)*.5,hC);
 
         float vel=length((prevUV-texcoord)*fres);
-        float w=TAA_BLENDWEIGHT;
+        float w=1.-(1.-TAA_BLENDWEIGHT)*RS*RS;
         w*=1.-.6*aggr*smoothstep(0.,4.,vel);
         w*=1.-.75*clamp(length(hC-hc)*2.*aggr,0.,1.);
         if(!ok||hA<.5) w=0.;
 
         vec3 outC=decompress(mix(curC,hc,w));
 
-        color=vec4(outC,cur.a);
+        color=vec4(outC,curA);
         color1=vec4(outC,1.);
     }
 

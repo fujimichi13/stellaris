@@ -15,43 +15,22 @@
 
     #include "/settings.glsl"
     #include "/lib/utility/uniforms.glsl"
+    #include "/lib/utility/math.glsl"
+    #include "/lib/utility/color.glsl"
+    #include "/lib/utility/dithering.glsl"
+    #include "/lib/utility/space.glsl"
+    #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/surface/brdf.glsl"
     #include "/lib/lighting/gtao.glsl"
+    #include "/lib/lighting/volumetricLight.glsl"
+    #include "/lib/atmosphere/volumetricClouds.glsl"
+    #include "/lib/water/water.glsl"
+    #include "/lib/water/waterFog.glsl"
 
     in vec2 texcoord;
 
     /* RENDERTARGETS:0 */
     layout(location = 0) out vec4 color;
-
-    vec2 bluenoise(vec2 fragCoord){
-        vec2 b=texelFetch(noisetex,ivec2(fragCoord)&127,0).rg;
-        #ifdef TAA_ENABLED
-            b=fract(b+float(frameCounter&63)*vec2(.7548777,.5698403));
-        #endif
-        return b;
-    }
-
-    vec3 viewSpacePosition(vec2 uv, float depth){
-        vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
-        return v.xyz/v.w;
-    }
-
-    vec3 skyRadiance(vec3 d){
-        float t=max(asin(clamp(d.y,-1.,1.)),0.);
-        vec3 s=texture(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,sqrt(t*.63661977)*.5+.5)).rgb;
-        return s*(1.-.6*smoothstep(0.,-.4,d.y));
-    }
-
-    //https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
-    vec3 ACES(vec3 v){
-        v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
-        v=(v*(v+.0245786)-.000090537)/(v*(.983729*v+.432951)+.238081);
-        return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
-    }
-
-    #include "/lib/atmosphere/scattering.glsl"
-    #include "/lib/water/water.glsl"    
-    #include "/lib/water/waterFog.glsl"
 
     int sur(ivec2 q, out vec3 n, out float rough){
         n=vec3(0.);
@@ -81,13 +60,13 @@
     vec4 reflectionFilter(ivec2 px, float depthC, int cls, vec3 nC, float roughC){
         vec4 rawC=texelFetch(colortex8,px,0);
 
-        ivec2 res=ivec2(viewWidth,viewHeight);
+        ivec2 res=ivec2(RRES);
 
         float radius=(cls==1)?mix(2.,7.,smoothstep(.05,.4,roughC)):2.5;
         radius*=float(1.);
         if(radius<.75) return rawC;
 
-        vec3 Pc=viewSpacePosition((vec2(px)+.5)/vec2(res),depthC);
+        vec3 Pc=viewSpacePosition((vec2(px)+.5)/RRES,depthC);
         vec3 nv=normalize(mat3(gbufferModelView)*nC);
         float zc=-Pc.z;
 
@@ -110,7 +89,7 @@
             if(sur(q,nq,rq)!=cls) continue;
 
             float dq=texelFetch(depthtex0,q,0).r;
-            vec3 Pq=viewSpacePosition((vec2(q)+.5)/vec2(res),dq);
+            vec3 Pq=viewSpacePosition((vec2(q)+.5)/RRES,dq);
 
             float w=exp(-abs(dot(Pq-Pc,nv))/(.02*zc+.02));
             w*=pow(max(dot(nC,nq),0.),16.);
@@ -140,11 +119,11 @@
     }
 
     void main(){
-        vec4 scene=texture(colortex0,texcoord);
-        float depth=texture(depthtex0,texcoord).r;
+        ivec2 px=ivec2(gl_FragCoord.xy);
+        vec4 scene=texelFetch(colortex0,px,0);
+        float depth=texelFetch(depthtex0,px,0).r;
         vec3 hdr=scene.rgb;
 
-        ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 nd=texelFetch(colortex3,px,0);
 
         if(depth<1.&&dot(nd.xyz,nd.xyz)>=.25&&abs(texelFetch(colortex13,px,0).w)<.5){
@@ -167,14 +146,15 @@
                 vec4 hit=reflectionFilter(px,depth,1,N,m.roughness);
                 hit.a*=1.-smoothstep(.4*.5,.4,m.roughness);
 
-                //float skyVis=lm.y*lm.y;
-                float skyVis=skyVisibility(lm.y);
-                vec3 skyDiff=skyRadiance(skyDiffuseDir(N))/**SKY_AMBIENT*/*skyVis*skyHemisphere(N);
-                vec3 R=doreflc(N,Rm,m.roughness);
-                vec3 skyEnv=mix(skyRadiance(R),skyDiff,m.roughness)*skyVis;
-                skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
+                if(hit.a>.001){
+                    float skyVis=skyVisibility(lm.y);
+                    vec3 skyDiff=skyRadiance(skyDiffuseDir(N))/**SKY_AMBIENT*/*skyVis*skyHemisphere(N);
+                    vec3 R=doreflc(N,Rm,m.roughness);
+                    vec3 skyEnv=mix(volumetricCloudsrfl(skyRadiance(R),R,skyVis,m.roughness),skyDiff,m.roughness)*skyVis;
+                    skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
 
-                hdr+=evalAmbient(m,N,V,vec3(0.),(hit.rgb-skyEnv)*hit.a);
+                    hdr+=evalAmbient(m,N,V,vec3(0.),(hit.rgb-skyEnv)*hit.a);
+                }
             }
         }
 
@@ -191,11 +171,12 @@
 
             float skyVis=texelFetch(colortex14,px,0).a;
             skyVis*=skyVis;
-            vec3 refl=mix(skyRadiance(R)*skyVis,hit.rgb,hit.a)*waterFresnel(NdotV);
+            vec3 skyRefl=(hit.a<.999)?volumetricCloudsrfl(skyRadiance(R),R,skyVis,0.)*skyVis:vec3(0.);
+            vec3 refl=mix(skyRefl,hit.rgb,hit.a)*waterFresnel(NdotV);
 
-            vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
-            vec3 lightCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,eyeAlt(cameraPosition.y)*.01))*smoothstep(-.04,.0,S.y)+vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 L=lightDirection();
+            vec3 S=sunDirection();
+            vec3 lightCol=lightColor(S);
             vec3 H=normalize(V+L);
             float NdotL=max(dot(N,L),0.);
             float NdotH=max(dot(N,H),0.);
@@ -220,12 +201,12 @@
             vec4 hit=reflectionFilter(px,depth,3,N,0.);
 
             float skyVis=skyVisibility(fract(-wn.w)/.99);
-            vec3 skyRefl=skyRadiance(R)*skyVis*mix(.15,1.,smoothstep(-.1,.05,R.y));
+            vec3 skyRefl=(hit.a<.999)?volumetricCloudsrfl(skyRadiance(R),R,skyVis,0.)*skyVis*mix(.15,1.,smoothstep(-.1,.05,R.y)):vec3(0.);
             vec3 refl=mix(skyRefl,hit.rgb,hit.a)*F;
 
-            vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
-            vec3 lightCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,eyeAlt(cameraPosition.y)*.01))*smoothstep(-.04,.0,S.y)+vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 L=lightDirection();
+            vec3 S=sunDirection();
+            vec3 lightCol=lightColor(S);
             vec3 H=normalize(V+L);
             float NdotL=max(dot(N,L),0.);
             float NdotH=max(dot(N,H),0.);
@@ -240,14 +221,31 @@
             hdr+=refl;
         }
 
+        #ifdef VOLUMETRIC_LIGHT
+            if(isEyeInWater==0){
+                vec3 Pv=viewSpacePosition(texcoord,depth);
+                vec3 dir=normalize(mat3(gbufferModelViewInverse)*Pv);
+                float rayLen=(depth<1.)?length(Pv):128.;
+
+                vec3 L=lightDirection();
+                vec3 S=sunDirection();
+                vec3 lightCol=lightColor(S);
+                vec3 ambient=.5*(skyRadiance(vec3(0.,1.,0.))+skyRadiance(normalize(vec3(dir.x,max(dir.y,.02),dir.z))));
+
+                vec3 vlT;
+                vec3 vlL=volumetricLight(dir,rayLen,L,lightCol,ambient,bluenoise(gl_FragCoord.xy+vec2(19.,41.)).x,vlT);
+                hdr=hdr*vlT+vlL;
+            }
+        #endif
+
         if(isEyeInWater==1){
             vec3 Pv=viewSpacePosition(texcoord,depth);
             float dist=length(Pv);
             vec3 dir=normalize(mat3(gbufferModelViewInverse)*Pv);
 
-            vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
-            vec3 lightCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,eyeAlt(cameraPosition.y)*.01))*smoothstep(-.04,.0,S.y)+vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 L=lightDirection();
+            vec3 S=sunDirection();
+            vec3 lightCol=lightColor(S);
             vec3 sky=texture(samplerSky,vec2(.5,.75)).rgb;
 
             float camDepth=(1.-float(eyeBrightnessSmooth.y)/240.)*15.;

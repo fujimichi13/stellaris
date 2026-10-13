@@ -76,10 +76,11 @@
         color1=vec4(0.);
 
         ivec2 hp=ivec2(gl_FragCoord.xy);
-        ivec2 fullRes=ivec2(viewWidth,viewHeight);
+        ivec2 fullRes=ivec2(RRES);
 
         ivec2 jit=ivec2(frameCounter&1,(frameCounter>>1)&1);
-        ivec2 fp=min(hp*2+jit,fullRes-1);
+        ivec2 fp=hp*2+jit;
+        if(any(greaterThanEqual(fp,fullRes))) return;
 
         float depth=texelFetch(depthtex0,fp,0).r;
         if(abs(texelFetch(colortex13,fp,0).w)>.5) depth=texelFetch(depthtex1,fp,0).r;
@@ -93,7 +94,7 @@
         if(skyLm<.5) return;
 
         vec3 N=normalize(nd.xyz);
-        vec3 worldPos=worldSpacePosition((vec2(fp)+.5)/vec2(fullRes),depth);
+        vec3 worldPos=worldSpacePosition((vec2(fp)+.5)/RRES,depth);
 
         color=rsmTemporal(worldPos,RSM(worldPos,N));
         color1=vec4(length(worldPos),0.,0.,0.);

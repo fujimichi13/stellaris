@@ -15,6 +15,8 @@
 
     #include "/settings.glsl"
     #include "/lib/utility/uniforms.glsl"
+    #include "/lib/utility/dithering.glsl"
+    #include "/lib/utility/space.glsl"
     #include "/lib/surface/brdf.glsl"
 
     in vec2 texcoord;
@@ -24,23 +26,6 @@
 
     #define RAYTRACE_STEPS 64
     #define RAYTRACE_REFINEMENT 6
-
-    vec2 bluenoise(vec2 fragCoord){
-        vec2 b=texelFetch(noisetex,ivec2(fragCoord)&127,0).rg;
-        #ifdef TAA_ENABLED
-            b=fract(b+float(frameCounter&63)*vec2(.7548777,.5698403));
-        #endif
-        return b;
-    }
-
-    vec3 viewSpacePosition(vec2 uv, float depth){
-        vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
-        return v.xyz/v.w;
-    }
-
-    float viewDepth(float d){
-        return -gbufferProjection[3][2]/(d*2.-1.+gbufferProjection[2][2]);
-    }
 
     #include "/lib/surface/ssr.glsl"
 

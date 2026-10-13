@@ -9,10 +9,7 @@
 
     void main(){
         glcolor=gl_Color;
-        gl_Position=gl_ProjectionMatrix*gl_ModelViewMatrix*gl_Vertex;
-        #ifdef TAA_ENABLED
-            gl_Position.xy+=taaJitter*gl_Position.w;
-        #endif
+        gl_Position=taaClip(gl_ProjectionMatrix*gl_ModelViewMatrix*gl_Vertex);
     }
 
 #endif

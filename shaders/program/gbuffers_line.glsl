@@ -23,10 +23,7 @@
         if(offset.x<0.) offset=-offset;
 
         vec3 ndc=(gl_VertexID%2==0)?ndc0+vec3(offset,0.):ndc0-vec3(offset,0.);
-        gl_Position=vec4(ndc*p0.w,p0.w);
-        #ifdef TAA_ENABLED
-            gl_Position.xy+=taaJitter*gl_Position.w;
-        #endif
+        gl_Position=taaClip(vec4(ndc*p0.w,p0.w));
     }
 
 #endif

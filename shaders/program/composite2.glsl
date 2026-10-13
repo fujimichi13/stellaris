@@ -75,7 +75,7 @@
 
         #ifdef RSM_ENABLED
           if(!skyPx){
-            ivec2 fullRes=textureSize(colortex3,0);
+            ivec2 fullRes=ivec2(RRES);
             ivec2 hres=fullRes>>1;
             ivec2 hp=px>>1;
 
@@ -140,9 +140,9 @@
             vec2 uvR=(cp.w>0.)?cp.xy/cp.w*.5+.5:texcoord;
             float edge=min(min(uvR.x,1.-uvR.x),min(uvR.y,1.-uvR.y));
             uvR=mix(texcoord,uvR,smoothstep(0.,.05,edge));
-            if(texture(depthtex0,uvR).r<depth0-1e-5&&texture(colortex13,uvR).w<.5) uvR=texcoord;
+            if(texture(depthtex0,rUV(uvR)).r<depth0-1e-5&&texture(colortex13,rUV(uvR)).w<.5) uvR=texcoord;
 
-            float d2=texture(depthtex1,uvR).r;
+            float d2=texture(depthtex1,rUV(uvR)).r;
             vec3 Pu=(d2<1.)?worldSpacePosition(uvR,d2):Pw-V*40.;
             float th=length(Pu-Pw);
             float hu=max(Pw.y-Pu.y,0.);
@@ -163,7 +163,7 @@
 
             vec3 Tv=exp(-sig*th);
             vec3 Td=exp(-sig*hu/cosTL)*(1.-waterFresnel(Lc));
-            vec3 under=(texture(colortex8,uvR).rgb+gi)*Td*Tv;
+            vec3 under=(texture(colortex8,rUV(uvR)).rgb+gi)*Td*Tv;
 
             vec3 sunE=lightCol*Lc*(1.-waterFresnel(Lc))*skyVis;
             vec3 skyE=sky*3.14159*.94*skyVis;
@@ -202,9 +202,9 @@
                 float edge=min(min(u.x,1.-u.x),min(u.y,1.-u.y));
                 uvR=mix(texcoord,u,smoothstep(0.,.05,edge));
             }
-            if(texture(depthtex1,uvR).r<depth0-1e-5) uvR=texcoord;
+            if(texture(depthtex1,rUV(uvR)).r<depth0-1e-5) uvR=texcoord;
 
-            vec3 under=texture(colortex8,uvR).rgb+gi;
+            vec3 under=texture(colortex8,rUV(uvR)).rgb+gi;
 
             float NdotV=max(dot(N,-D),.001);
             float c5=1.-NdotV;
