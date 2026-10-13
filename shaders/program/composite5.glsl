@@ -14,6 +14,7 @@
 #ifdef fsh
 
     #include "/settings.glsl"
+    #include "/lib/utility/color.glsl"
     #include "/lib/utility/uniforms.glsl"
 
     /*
@@ -27,9 +28,6 @@
     layout(location = 0) out vec4 color;
     layout(location = 1) out vec4 color1;
 
-    float luma(vec3 c){
-        return dot(c,vec3(.2126,.7152,.0722));
-    }
     vec3 compress(vec3 c){
         return c/(1.+luma(c));
     }

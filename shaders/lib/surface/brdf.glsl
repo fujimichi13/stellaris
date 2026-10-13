@@ -2,6 +2,7 @@
     #define BRDF_GLSL
 
     #include "/lib/utility/math.glsl"
+    #include "/lib/utility/color.glsl"
 
     #define skyVisibility(l) (pow(l,SKYLIGHT_CURVE)*pow(.9667,4.-SKYLIGHT_CURVE))
 
@@ -64,7 +65,7 @@
 
     vec3 fresnel(Material m,float VoH){
         VoH=max(VoH,1e-4);
-        if(m.conductor) return fresnelConductor(VoH,m.eta,m.kappa);
+        if(m.conductor) return toAP1(fresnelConductor(VoH,m.eta,m.kappa));
         return m.F0+(f90From(m.F0)-m.F0)*pow5(1.-VoH);
     }
 
@@ -86,7 +87,7 @@
             m.kappa=metalk[g-230];
             m.conductor=true;
             m.metallic=1.;
-            m.F0=fresnelConductor(1.,m.eta,m.kappa);
+            m.F0=toAP1(fresnelConductor(1.,m.eta,m.kappa));
         }else if(g<255){
             m.metallic=1.;
             m.F0=albedo;

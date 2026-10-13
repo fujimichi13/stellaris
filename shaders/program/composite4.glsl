@@ -131,7 +131,7 @@
             vec4 spec=texelFetch(colortex2,px,0);
             vec2 lm=texelFetch(colortex4,px,0).rg;
 
-            vec3 albedoLin=pow(texelFetch(colortex7,px,0).rgb,vec3(2.2));
+            vec3 albedoLin=toAP1(pow(texelFetch(colortex7,px,0).rgb,vec3(2.2)));
             Material m=decodeLabPBR(spec,albedoLin);
             m.ao=nd.w;
             #ifdef GTAO_ENABLED
@@ -150,7 +150,15 @@
                     float skyVis=skyVisibility(lm.y);
                     vec3 skyDiff=skyRadiance(skyDiffuseDir(N))/**SKY_AMBIENT*/*skyVis*skyHemisphere(N);
                     vec3 R=doreflc(N,Rm,m.roughness);
-                    vec3 skyEnv=mix(volumetricCloudsrfl(skyRadiance(R),R,skyVis,m.roughness),skyDiff,m.roughness)*skyVis;
+                    vec3 skyR=skyRadiance(R);
+                    #ifdef VOLUMETRIC_CLOUDS
+                        float rflW=1.-smoothstep(.2,.4,m.roughness);
+                        if(rflW>.001&&R.y>.001&&skyVis>.01){
+                            vec4 rflCl=volumetricClouds(R,16);
+                            skyR=mix(skyR,skyR*(1.-rflCl.a)+rflCl.rgb,rflW);
+                        }
+                    #endif
+                    vec3 skyEnv=mix(skyR,skyDiff,m.roughness)*skyVis;
                     skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
 
                     hdr+=evalAmbient(m,N,V,vec3(0.),(hit.rgb-skyEnv)*hit.a);
@@ -171,7 +179,17 @@
 
             float skyVis=texelFetch(colortex14,px,0).a;
             skyVis*=skyVis;
-            vec3 skyRefl=(hit.a<.999)?volumetricCloudsrfl(skyRadiance(R),R,skyVis,0.)*skyVis:vec3(0.);
+            vec3 skyRefl=vec3(0.);
+            if(hit.a<.999){
+                skyRefl=skyRadiance(R);
+                #ifdef VOLUMETRIC_CLOUDS
+                    if(R.y>.001&&skyVis>.01){
+                        vec4 rflCl=volumetricClouds(R,16);
+                        skyRefl=skyRefl*(1.-rflCl.a)+rflCl.rgb;
+                    }
+                #endif
+                skyRefl*=skyVis;
+            }
             vec3 refl=mix(skyRefl,hit.rgb,hit.a)*waterFresnel(NdotV);
 
             vec3 L=lightDirection();
@@ -201,7 +219,17 @@
             vec4 hit=reflectionFilter(px,depth,3,N,0.);
 
             float skyVis=skyVisibility(fract(-wn.w)/.99);
-            vec3 skyRefl=(hit.a<.999)?volumetricCloudsrfl(skyRadiance(R),R,skyVis,0.)*skyVis*mix(.15,1.,smoothstep(-.1,.05,R.y)):vec3(0.);
+            vec3 skyRefl=vec3(0.);
+            if(hit.a<.999){
+                skyRefl=skyRadiance(R);
+                #ifdef VOLUMETRIC_CLOUDS
+                    if(R.y>.001&&skyVis>.01){
+                        vec4 rflCl=volumetricClouds(R,16);
+                        skyRefl=skyRefl*(1.-rflCl.a)+rflCl.rgb;
+                    }
+                #endif
+                skyRefl*=skyVis*mix(.15,1.,smoothstep(-.1,.05,R.y));
+            }
             vec3 refl=mix(skyRefl,hit.rgb,hit.a)*F;
 
             vec3 L=lightDirection();
@@ -266,8 +294,7 @@
                 }
                 vec3 outside=hdr;
                 if(F<1.&&skyBehind>.5){
-                    float el=max(asin(clamp(T.y,-1.,1.)),0.);
-                    outside=texture(samplerSky,vec2(atan(T.z,T.x)*.15915494+.5,sqrt(el*.63661977)*.5+.5)).rgb*(1.-.6*smoothstep(0.,-.4,T.y));
+                    outside=skyRadiance(T);
                     outside+=lightCol*smoothstep(.9998,.99985,dot(T,L))*smoothstep(-.02,0.,T.y)*30.;
                 }
                 vec3 inside=calcWaterFog(vec3(0.),reflect(dir,Ns),256.,0.,L,lightCol,sky);

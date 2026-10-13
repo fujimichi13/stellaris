@@ -14,6 +14,7 @@
 #ifdef fsh
 
     #include "/settings.glsl"
+    #include "/lib/utility/color.glsl"
     #include "/lib/utility/uniforms.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/water/water.glsl"
@@ -23,12 +24,6 @@
     /* RENDERTARGETS:0,7 */
     layout(location = 0) out vec4 color;
     layout(location = 1) out vec4 color1;
-
-    vec3 ACES(vec3 v){
-        v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
-        v=(v*(v+.0245786)-.000090537)/(v*(.983729*v+.432951)+.238081);
-        return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
-    }
 
     const float K3[3]=float[3](.25,.5,.25);
 
@@ -124,7 +119,7 @@
         if(wn.w>.5&&depth0<1.&&isEyeInWater==0){
             vec4 tl=texelFetch(colortex14,px,0);
             //vec3 refl=texelFetch(colortex15,px,0).rgb;
-            vec3 tint=pow(tl.rgb,vec3(2.2));
+            vec3 tint=toAP1(pow(tl.rgb,vec3(2.2)));
             float skyVis=tl.a*tl.a;
 
             vec3 N=normalize(wn.xyz);
@@ -148,10 +143,10 @@
             float hu=max(Pw.y-Pu.y,0.);
 
             vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
+            vec3 S=normalize(sunDir);
             float alt=eyeAlt(cameraPosition.y);
-            vec3 sunCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*smoothstep(-.04,.0,S.y);
-            vec3 moonCol=vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 sunCol=sunLight(S,alt);
+            vec3 moonCol=toAP1(vec3(.20,.30,.55))*.35*(1.-smoothstep(-.12,.02,S.y));
             vec3 lightCol=sunCol+moonCol;
             vec3 sky=texture(samplerSky,vec2(.5,.75)).rgb;
 
@@ -176,7 +171,7 @@
 
         if(glassPx&&depth0<1.){
             vec4 tl=texelFetch(colortex14,px,0);
-            vec3 tint=pow(tl.rgb,vec3(2.2));
+            vec3 tint=toAP1(pow(tl.rgb,vec3(2.2)));
             float alpha=tl.a;
 
             float code=floor(-wn.w);
@@ -211,10 +206,10 @@
             float F=.04+.96*c5*c5*c5*c5*c5;
 
             vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
+            vec3 S=normalize(sunDir);
             float alt=eyeAlt(cameraPosition.y);
-            vec3 sunCol=toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*smoothstep(-.04,.0,S.y);
-            vec3 moonCol=vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 sunCol=sunLight(S,alt);
+            vec3 moonCol=toAP1(vec3(.20,.30,.55))*.35*(1.-smoothstep(-.12,.02,S.y));
             vec3 lightCol=sunCol+moonCol;
             vec3 sky=texture(samplerSky,vec2(.5,.75)).rgb;
 

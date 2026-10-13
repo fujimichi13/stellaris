@@ -13,11 +13,15 @@
 
 #ifdef fsh
 
+    layout(rgba16f) uniform image2D cloudHistA;
+    layout(rgba16f) uniform image2D cloudHistB;
+
     #include "/settings.glsl"
     #include "/lib/utility/uniforms.glsl"
     #include "/lib/utility/math.glsl"
     #include "/lib/utility/dithering.glsl"
     #include "/lib/utility/space.glsl"
+    #include "/lib/utility/color.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/surface/brdf.glsl"
     #include "/lib/lighting/gtao.glsl"
@@ -147,7 +151,7 @@
             vec3 v=vec3(1.);
             #ifdef COLORED_SHADOW
                 if(zs>texture(shadowtex0,suv).r){
-                    vec3 tint=pow(texture(shadowcolor0,suv).rgb,vec3(2.2));
+                    vec3 tint=toAP1(pow(texture(shadowcolor0,suv).rgb,vec3(2.2)));
 
                     float mx=max(max(tint.r,tint.g),max(tint.b,1e-3));
                     float mn=min(min(tint.r,tint.g),tint.b);
@@ -169,6 +173,89 @@
         return mix(vec3(1.),vis,fade);
     }
 
+    vec3 cos(vec3 col,vec3 worldPos){
+        #ifdef VOLUMETRIC_CLOUDS
+            if(cameraPosition.y>CLOUD_ALTITUDE){
+                float dist=length(worldPos);
+                vec4 cl=raymarch(worldPos/dist,CLOUD_RAY_STEPS,dist);
+                col=col*(1.-cl.a)+cl.rgb;
+            }
+        #endif
+        return col;
+    }
+
+    vec4 cfetch(ivec2 q,bool readA){
+        return readA?texelFetch(samplerCloudA,q,0):texelFetch(samplerCloudB,q,0);
+    }
+
+    void cstore(ivec2 px,vec4 v){
+        if((frameCounter&1)==0){
+            imageStore(cloudHistB,px,v);
+        }else{
+            imageStore(cloudHistA,px,v);
+        }
+    }
+
+    vec4 csample(vec2 uv,bool readA,out float cover){
+        vec2 pos=uv*RRES-.5;
+        ivec2 i0=ivec2(floor(pos));
+        vec2 f=pos-vec2(i0);
+        ivec2 hi=ivec2(RRES)-1;
+        vec4 acc=vec4(0.);
+        float ws=0.;
+        for(int y=0;y<2;y++){
+            for(int x=0;x<2;x++){
+                float w=(x==0?1.-f.x:f.x)*(y==0?1.-f.y:f.y);
+                ivec2 q=i0+ivec2(x,y);
+                if(any(lessThan(q,ivec2(0)))||any(greaterThan(q,hi))) continue;
+                vec4 h=cfetch(q,readA);
+                if(h.a>.5&&!any(isnan(h))){
+                    acc+=vec4(h.rgb,h.a-1.)*w;
+                    ws+=w;
+                }
+            }
+        }
+        cover=ws;
+        return acc/max(ws,1e-4);
+    }
+
+    vec4 cloudTemporal(vec3 rd,ivec2 px){
+        vec4 cur=volumetricClouds(rd,CLOUD_RAY_STEPS);
+        if(any(isnan(cur))) cur=vec4(0.);
+        cur.a=saturate(cur.a);
+
+        float yMid=CLOUD_ALTITUDE+CLOUD_THICKNESS*1.1;
+        float D=clamp(abs(yMid-cameraPosition.y)/max(abs(rd.y),.03),300.,60000.);
+        vec3 pw=rd*D+(cameraPosition-previousCameraPosition);
+        vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(pw,1.));
+
+        float w=0.;
+        vec4 res=cur;
+        if(pc.w>0.){
+            vec2 prevUV=pc.xy/pc.w*.5+.5;
+            if(all(greaterThan(prevUV,vec2(0.)))&&all(lessThan(prevUV,vec2(1.)))){
+                float cover;
+                vec4 h=csample(prevUV,(frameCounter&1)==0,cover);
+
+                float vel=length((prevUV-texcoord)*RRES);
+                w=clamp(CLOUD_TEMPORAL_BLEND,0.,.98);
+                w*=1.-.7*smoothstep(0.,4.,vel);
+                w*=smoothstep(.2,.9,cover);
+                float dA=abs(h.a-cur.a);
+                float dC=abs(dot(h.rgb-cur.rgb,vec3(.3333)))/(dot(cur.rgb+h.rgb,vec3(.3333))+.05);
+                w*=1.-.6*smoothstep(.5,1.,max(dA,dC));
+                res=mix(cur,h,w);
+            }
+        }
+
+        cstore(px,vec4(max(res.rgb,0.),res.a+1.));
+        return res;
+    }
+
+    void cvali(ivec2 px){
+        cstore(px,vec4(0.));
+    }
+
     void main(){
         ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 albedo=texelFetch(colortex0,px,0);
@@ -179,11 +266,13 @@
         color1=vec4(0.,0.,0.,1.);
         if(depth>=1.){
             #ifdef VOLUMETRIC_CLOUDS
-                vec4 cl=volumetricClouds(normalize(worldSpacePosition(texcoord,1.)),CLOUD_RAY_STEPS);
+                vec3 skyRd=normalize(worldSpacePosition(texcoord,1.));
+                vec4 cl=cloudTemporal(skyRd,px);
                 color=vec4(albedo.rgb*(1.-cl.a)+cl.rgb,albedo.a);
             #endif
             return;
         }
+        cvali(px);
 
         vec3 worldPos=worldSpacePosition(texcoord,depth);
 
@@ -207,7 +296,7 @@
 
         vec4 nd=texelFetch(colortex3,px,0);
         if(dot(nd.xyz,nd.xyz)<.25){
-            color=vec4(albedo.rgb*mix(vec3(.35),vec3(1.),visC),albedo.a);
+            color=vec4(cos(albedo.rgb*mix(vec3(.35),vec3(1.),visC),worldPos),albedo.a);
             return;
         }
 
@@ -215,7 +304,7 @@
         vec4 spec=texelFetch(colortex2,px,0);
         vec2 lm=texelFetch(colortex4,px,0).rg;
 
-        vec3 albedoLin=pow(albedo.rgb,vec3(2.2));
+        vec3 albedoLin=toAP1(pow(albedo.rgb,vec3(2.2)));
         Material m=decodeLabPBR(spec,albedoLin);
         m.ao=nd.w;
 
@@ -262,7 +351,15 @@
         float skyVis=skyVisibility(lm.y);
         vec3 skyDiff=skyRadiance(skyDiffuseDir(N))*1.*skyVis*skyHemisphere(N);
         vec3 R=doreflc(N,reflect(-V,N),m.roughness);
-        vec3 skyEnv=mix(volumetricCloudsrfl(skyRadiance(R),R,skyVis,m.roughness),skyDiff,m.roughness)*skyVis;
+        vec3 skyR=skyRadiance(R);
+        #ifdef VOLUMETRIC_CLOUDS
+            float rflW=1.-smoothstep(.2,.4,m.roughness);
+            if(rflW>.001&&R.y>.001&&skyVis>.01){
+                vec4 rflCl=volumetricClouds(R,16);
+                skyR=mix(skyR,skyR*(1.-rflCl.a)+rflCl.rgb,rflW);
+            }
+        #endif
+        vec3 skyEnv=mix(skyR,skyDiff,m.roughness)*skyVis;
         skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
         vec3 ambient=evalAmbient(m,N,V,skyDiff,skyEnv);
 
@@ -270,7 +367,7 @@
         float specW=idrspecweight(m.roughness);
 
         float bl=pow(lm.x,4.);
-        vec3 blockLight=vec3(1.,.52,.22)*24.*bl*m.ao;
+        vec3 blockLight=toAP1(vec3(1.,.52,.22))*24.*bl*m.ao;
         vec3 blockDiff=m.diffuse*blockLight;
         vec3 blockSpec=sa*specW*blockLight;
         vec3 emissive=m.albedo*m.emission*16.;
@@ -278,7 +375,7 @@
         color1=vec4(lightCol*(m.diffuse+sa*specW)*m.ao*skyVis*7.,0.);
 
         vec3 hdr=direct+ambient+blockDiff+blockSpec+emissive;
-        color=vec4(hdr,albedo.a);
+        color=vec4(cos(hdr,worldPos),albedo.a);
     }
 
 #endif

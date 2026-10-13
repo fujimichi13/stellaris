@@ -11,7 +11,7 @@ layout(rgba32f) uniform image2D skyLut;
 uniform sampler2D samplerTransmittance;
 
 uniform mat4 gbufferModelViewInverse;
-uniform vec3 sunPosition;
+uniform vec3 sunDir;
 uniform vec3 cameraPosition;
 
 void main(){
@@ -22,10 +22,9 @@ void main(){
     vec2 uv=(vec2(id)+.5)/vec2(256.,128.);
 
     float az=(uv.x-.5)*6.2831853;
-    float l=uv.y*2.-1.;
-    float el=l*l*sign(l)*1.5707963;
+    float el=skyElev(uv.y,skyDip(alt));
     vec3 V=vec3(cos(el)*cos(az),sin(el),cos(el)*sin(az));
-    vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
+    vec3 S=normalize(sunDir);
     vec3 O=vec3(0.,R+alt,0.);
     vec4 T;
     float g;

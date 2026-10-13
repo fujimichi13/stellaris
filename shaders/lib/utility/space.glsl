@@ -23,7 +23,7 @@
     }
 
     vec3 sunDirection(){
-        return viewToWorldDir(sunPosition);
+        return normalize(sunDir);
     }
 
     vec3 lightDirection(){
