@@ -38,8 +38,8 @@
     uniform sampler2D samplerTransmittance;
     uniform sampler2D samplerSky;
     uniform sampler2D samplerCaustic;
-    uniform sampler2D samplerCloudA;
-    uniform sampler2D samplerCloudB;
+    uniform sampler2D samplerCloudHistA;
+    uniform sampler2D samplerCloudHistB;
     
     uniform sampler2D samplerWarpX;
     uniform sampler2D samplerWarpY;
@@ -64,18 +64,9 @@
     uniform mat4 shadowModelViewInverse;
 
     uniform vec2 taaJitter;
-    uniform vec2 taaJitterU;
 
     uniform vec3 shadowLightPosition;
     uniform vec3 sunPosition;
-
-    uniform vec3 sunDir;
-    uniform vec3 viewSunDir;
-    
-    uniform float timeSunrise;
-    uniform float timeNoon;
-    uniform float timeSunset;
-    uniform float timeMidnight;
 
     uniform vec3 cameraPosition;
     uniform vec3 previousCameraPosition;
@@ -95,10 +86,8 @@
 
     vec4 taaClip(vec4 p){
         #ifdef TAAU_ENABLED
-            p.xy+=taaJitterU*p.w;
-            p.xy=p.xy*RS+p.w*(RS-1.);
-        #else 
             p.xy+=taaJitter*p.w;
+            p.xy=p.xy*RS+p.w*(RS-1.);
         #endif
         return p;
     }

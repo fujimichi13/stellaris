@@ -38,7 +38,7 @@
         }
         #ifdef COLORED_SHADOW
             else if (z>texelFetch(shadowtex0,tc,0).r){
-                vec3 tint=toAP1(pow(texelFetch(shadowcolor0,tc,0).rgb, vec3(2.2)));
+                vec3 tint=pow(texelFetch(shadowcolor0,tc,0).rgb, vec3(2.2));
 
                 float mx=max(max(tint.r,tint.g),max(tint.b,1e-3));
                 float mn=min(min(tint.r,tint.g),tint.b);

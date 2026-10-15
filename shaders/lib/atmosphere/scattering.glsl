@@ -2,7 +2,6 @@
     #define ATMOS_SCATTERING a
 
     #include "transmittance.glsl"
-    #include "/lib/utility/color.glsl"
 
     float RayleighPhaseFunction(float c){
         return .0596831037*(1.+c*c);
@@ -58,45 +57,38 @@
         return L;
     }
 
-    float skyDip(float alt){
-        return atan(sqrt(alt*(2.*R+alt))/R);
-    }
-
-    float skyV(float e,float dip){
-        return .5+.5*sqrt(max(e+dip,0.)/(1.5707963+dip));
-    }
-
-    float skyElev(float v,float dip){
-        float l=v*2.-1.;
-        return l>0.?l*l*(1.5707963+dip)-dip:-dip-l*l*(1.5707963-dip);
-    }
-
     vec3 toRGB(vec4 L){
-        return toAP1(mat4x3(
+        return mat4x3(
             137.672389239975,-8.632904716299537,-1.7181567391931372,
             32.549094028629234,91.29801417199785,-12.005406444382531,
             -38.91428392614275,34.31665471469816,29.89044807197628,
             8.572844237945445,-11.103384660054624,117.47585277566478
-        )*L);
+        )*L;
     }
 
     #ifdef UNIFORMS_GLSL
 
         vec3 skyRadiance(vec3 d){
-            float dip=skyDip(eyeAlt(cameraPosition.y));
-            float e=max(asin(clamp(d.y,-1.,1.)),-dip);
-            float v=max(skyV(e,dip),.5+.75/128.);
-            vec3 s=texture(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,v)).rgb;
-            return s*(1.-.6*smoothstep(0.,.4,-d.y));
+            float t=max(asin(clamp(d.y,-1.,1.)),0.);
+            vec3 s=texture(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,sqrt(t*.63661977)*.5+.5)).rgb;
+            return s*(1.-.6*smoothstep(0.,-.4,d.y));
         }
 
         vec3 sunLight(vec3 S,float alt){
-            float sd=sin(skyDip(alt));
-            return toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*smoothstep(-sd-.04,-sd,S.y);
+            return toRGB(sunIrr*lutT(samplerTransmittance,S.y,alt*.01))*smoothstep(0.,.04,S.y);
         }
 
         vec3 moonLight(vec3 S){
-            return toAP1(vec3(.20,.30,.55))*.35*(1.-smoothstep(-.12,.02,S.y));
+            return vec3(.20,.30,.55)*.35*(1.-smoothstep(-.12,0.,S.y));
+        }
+
+        vec3 skyAmbient(){
+            vec3 a=skyRadiance(vec3(0.,1.,0.));
+            a+=skyRadiance(vec3(.9239,.3827,0.));
+            a+=skyRadiance(vec3(-.9239,.3827,0.));
+            a+=skyRadiance(vec3(0.,.3827,.9239));
+            a+=skyRadiance(vec3(0.,.3827,-.9239));
+            return a*.2;
         }
 
         vec3 lightColor(vec3 S){

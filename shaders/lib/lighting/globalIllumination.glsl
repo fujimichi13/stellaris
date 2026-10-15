@@ -1,7 +1,5 @@
 #ifndef GI_GLSL
     #define GI_GLSL a
-    
-    #include "/lib/utility/color.glsl"
 
     vec3 RSM(vec3 worldPos, vec3 N){
         vec4 clip=toShadowClip(worldPos);
@@ -27,7 +25,7 @@
 
             vec3 xs=(shadowModelViewInverse*(shadowProjectionInverse*vec4(sc,d1*2.-1.,1.))).xyz;
             vec3 ns=normalize(mat3(shadowModelViewInverse)*(texture(shadowcolor1,uv).xyz*2.-1.));
-            vec3 flux=toAP1(pow(texture(shadowcolor0,uv).rgb,vec3(2.2)));
+            vec3 flux=pow(texture(shadowcolor0,uv).rgb,vec3(2.2));
 
             vec3 dv=worldPos-xs;
             float d2=dot(dv,dv)+1.;

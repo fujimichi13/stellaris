@@ -13,15 +13,11 @@
 
 #ifdef fsh
 
-    layout(rgba16f) uniform image2D cloudHistA;
-    layout(rgba16f) uniform image2D cloudHistB;
-
     #include "/settings.glsl"
     #include "/lib/utility/uniforms.glsl"
     #include "/lib/utility/math.glsl"
     #include "/lib/utility/dithering.glsl"
     #include "/lib/utility/space.glsl"
-    #include "/lib/utility/color.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/surface/brdf.glsl"
     #include "/lib/lighting/gtao.glsl"
@@ -38,6 +34,122 @@
 
     layout(r32ui) uniform uimage2D histX;
     layout(r32ui) uniform uimage2D histY;
+
+    #ifdef VOLUMETRIC_CLOUDS
+        layout(rgba32f) uniform image2D cloudHistA;
+        layout(rgba32f) uniform image2D cloudHistB;
+
+        vec3 cldCompress(vec3 c){
+            return c/(1.+dot(c,vec3(.2126,.7152,.0722)));
+        }
+        vec3 cldDecompress(vec3 c){
+            return c/max(1.-dot(c,vec3(.2126,.7152,.0722)),1e-4);
+        }
+
+        vec4 cloudHistFetch(ivec2 q,bool readA){
+            vec4 h=readA?texelFetch(samplerCloudHistA,q,0):texelFetch(samplerCloudHistB,q,0);
+            if(any(isnan(h))) h=vec4(0.);
+            return h;
+        }
+
+        void cloudHistStore(ivec2 q,vec4 v,bool writeA){
+            if(writeA) imageStore(cloudHistA,q,v); else imageStore(cloudHistB,q,v);
+        }
+
+        vec4 cloudTemporal(vec4 cur,vec3 rd,ivec2 px,vec2 uv,bool fresh){
+            bool writeA=(frameCounter&1)==0;
+            vec2 rr=RRES;
+
+            float ry=rd.y<0.?min(rd.y,-.05):max(rd.y,.05);
+            float t=clamp((CLOUD_ALTITUDE+CLOUD_THICKNESS*1.1-cameraPosition.y)/ry,0.,1e8);
+            vec3 wp=rd*t+(cameraPosition-previousCameraPosition);
+            vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(wp,1.));
+            vec2 prevUV=pc.xy/max(abs(pc.w),1e-5)*.5+.5;
+            bool ok=pc.w>0.&&all(greaterThan(prevUV,vec2(0.)))&&all(lessThan(prevUV,vec2(1.)));
+
+            vec3 curC=cldCompress(cur.rgb);
+            float n=0.;
+            vec3 outC=curC;
+            float outA=cur.a;
+
+            if(ok){
+                vec2 pos=prevUV*rr-.5;
+                ivec2 b=ivec2(floor(pos));
+                vec2 f=pos-vec2(b);
+                bool readA=!writeA;
+
+                vec4 acc=vec4(0.);
+                float nAcc=0.,wAcc=0.;
+                for(int i=0;i<4;i++){
+                    ivec2 o=ivec2(i&1,i>>1);
+                    ivec2 q=b+o;
+                    if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,ivec2(rr)))) continue;
+                    vec4 h=cloudHistFetch(q,readA);
+                    if(h.a<0.) continue;
+                    float w=((o.x==0)?1.-f.x:f.x)*((o.y==0)?1.-f.y:f.y);
+                    float hn=floor(h.a);
+                    float ha=clamp(fract(h.a)/.999,0.,1.);
+                    acc+=vec4(h.rgb,ha)*w;
+                    nAcc+=hn*w;
+                    wAcc+=w;
+                }
+
+                if(wAcc>.75){
+                    vec4 hist=acc/wAcc;
+                    float hn=nAcc/wAcc;
+
+                    float motion=length((prevUV-uv)*rr);
+                    if(fresh) hn*=1.-smoothstep(.15,3.,motion);
+                    hn*=smoothstep(.75,1.,wAcc);
+                    hn=min(hn,32.-1.);
+                    #if CLOUD_UPSCALING>0
+                        if(fresh) hn=max(hn,1.5*smoothstep(.75,1.,wAcc));
+                    #endif
+
+                    float lc=dot(curC,vec3(.2126,.7152,.0722));
+                    float lh=dot(hist.rgb,vec3(.2126,.7152,.0722));
+                    float diff=abs(lc-lh)+abs(cur.a-hist.a)*.5;
+                    if(fresh) hn*=1.-smoothstep(.25,.7,diff)*.75;
+
+                    float w=fresh?hn/(hn+1.):1.;
+                    outC=mix(curC,hist.rgb,w);
+                    outA=mix(cur.a,hist.a,w);
+                    n=fresh?hn+1.:max(hn,1.);
+                }
+            }
+
+            #if CLOUD_UPSCALING>0
+                if(ok){
+                    float conf=n/(n+3.);
+                    if(conf<.9){
+                        ivec2 c0=ivec2(floor(prevUV*rr));
+                        bool readA2=!writeA;
+                        vec4 bsum=vec4(0.);
+                        float bw=0.;
+                        for(int i=0;i<5;i++){
+                            ivec2 o=(i==0)?ivec2(0):((i==1)?ivec2(1,0):((i==2)?ivec2(-1,0):((i==3)?ivec2(0,1):ivec2(0,-1))));
+                            ivec2 q=c0+o;
+                            if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,ivec2(rr)))) continue;
+                            vec4 h=cloudHistFetch(q,readA2);
+                            if(h.a<1.) continue;
+                            float kw=(i==0)?2.:1.;
+                            bsum+=vec4(h.rgb,clamp(fract(h.a)/.999,0.,1.))*kw;
+                            bw+=kw;
+                        }
+                        if(bw>2.5){
+                            vec4 blur=bsum/bw;
+                            float a=(1.-conf)*.65;
+                            outC=mix(outC,blur.rgb,a);
+                            outA=mix(outA,blur.a,a);
+                        }
+                    }
+                }
+            #endif
+
+            cloudHistStore(px,vec4(outC,min(n,32.)+clamp(outA,0.,1.)*.999),writeA);
+            return vec4(cldDecompress(outC),outA);
+        }
+    #endif
 
     in vec2 texcoord;
 
@@ -120,9 +232,9 @@
         float searchBias=.0025*min(tanT,1.5);
         float blockerSum=0.;
         float blockers=0.;
-        for(int i=0;i<12;i++){
+        for(int i=0;i<8;i++){
             float a=float(i)*2.3999632+bn.x;
-            vec2 p=sqrt((float(i)+.5)/12.)*vec2(cos(a),sin(a));
+            vec2 p=sqrt((float(i)+.5)/8.)*vec2(cos(a),sin(a));
             float d=texture(shadowtex1,sp.xy+p*searchUV).r;
             if(d<z-length(p)*searchBias){
                 blockerSum+=d;
@@ -151,7 +263,7 @@
             vec3 v=vec3(1.);
             #ifdef COLORED_SHADOW
                 if(zs>texture(shadowtex0,suv).r){
-                    vec3 tint=toAP1(pow(texture(shadowcolor0,suv).rgb,vec3(2.2)));
+                    vec3 tint=pow(texture(shadowcolor0,suv).rgb,vec3(2.2));
 
                     float mx=max(max(tint.r,tint.g),max(tint.b,1e-3));
                     float mn=min(min(tint.r,tint.g),tint.b);
@@ -173,89 +285,6 @@
         return mix(vec3(1.),vis,fade);
     }
 
-    vec3 cos(vec3 col,vec3 worldPos){
-        #ifdef VOLUMETRIC_CLOUDS
-            if(cameraPosition.y>CLOUD_ALTITUDE){
-                float dist=length(worldPos);
-                vec4 cl=raymarch(worldPos/dist,CLOUD_RAY_STEPS,dist);
-                col=col*(1.-cl.a)+cl.rgb;
-            }
-        #endif
-        return col;
-    }
-
-    vec4 cfetch(ivec2 q,bool readA){
-        return readA?texelFetch(samplerCloudA,q,0):texelFetch(samplerCloudB,q,0);
-    }
-
-    void cstore(ivec2 px,vec4 v){
-        if((frameCounter&1)==0){
-            imageStore(cloudHistB,px,v);
-        }else{
-            imageStore(cloudHistA,px,v);
-        }
-    }
-
-    vec4 csample(vec2 uv,bool readA,out float cover){
-        vec2 pos=uv*RRES-.5;
-        ivec2 i0=ivec2(floor(pos));
-        vec2 f=pos-vec2(i0);
-        ivec2 hi=ivec2(RRES)-1;
-        vec4 acc=vec4(0.);
-        float ws=0.;
-        for(int y=0;y<2;y++){
-            for(int x=0;x<2;x++){
-                float w=(x==0?1.-f.x:f.x)*(y==0?1.-f.y:f.y);
-                ivec2 q=i0+ivec2(x,y);
-                if(any(lessThan(q,ivec2(0)))||any(greaterThan(q,hi))) continue;
-                vec4 h=cfetch(q,readA);
-                if(h.a>.5&&!any(isnan(h))){
-                    acc+=vec4(h.rgb,h.a-1.)*w;
-                    ws+=w;
-                }
-            }
-        }
-        cover=ws;
-        return acc/max(ws,1e-4);
-    }
-
-    vec4 cloudTemporal(vec3 rd,ivec2 px){
-        vec4 cur=volumetricClouds(rd,CLOUD_RAY_STEPS);
-        if(any(isnan(cur))) cur=vec4(0.);
-        cur.a=saturate(cur.a);
-
-        float yMid=CLOUD_ALTITUDE+CLOUD_THICKNESS*1.1;
-        float D=clamp(abs(yMid-cameraPosition.y)/max(abs(rd.y),.03),300.,60000.);
-        vec3 pw=rd*D+(cameraPosition-previousCameraPosition);
-        vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(pw,1.));
-
-        float w=0.;
-        vec4 res=cur;
-        if(pc.w>0.){
-            vec2 prevUV=pc.xy/pc.w*.5+.5;
-            if(all(greaterThan(prevUV,vec2(0.)))&&all(lessThan(prevUV,vec2(1.)))){
-                float cover;
-                vec4 h=csample(prevUV,(frameCounter&1)==0,cover);
-
-                float vel=length((prevUV-texcoord)*RRES);
-                w=clamp(CLOUD_TEMPORAL_BLEND,0.,.98);
-                w*=1.-.7*smoothstep(0.,4.,vel);
-                w*=smoothstep(.2,.9,cover);
-                float dA=abs(h.a-cur.a);
-                float dC=abs(dot(h.rgb-cur.rgb,vec3(.3333)))/(dot(cur.rgb+h.rgb,vec3(.3333))+.05);
-                w*=1.-.6*smoothstep(.5,1.,max(dA,dC));
-                res=mix(cur,h,w);
-            }
-        }
-
-        cstore(px,vec4(max(res.rgb,0.),res.a+1.));
-        return res;
-    }
-
-    void cvali(ivec2 px){
-        cstore(px,vec4(0.));
-    }
-
     void main(){
         ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 albedo=texelFetch(colortex0,px,0);
@@ -266,13 +295,55 @@
         color1=vec4(0.,0.,0.,1.);
         if(depth>=1.){
             #ifdef VOLUMETRIC_CLOUDS
-                vec3 skyRd=normalize(worldSpacePosition(texcoord,1.));
-                vec4 cl=cloudTemporal(skyRd,px);
+                vec3 cloudDir=normalize(worldSpacePosition(texcoord,1.));
+
+                // CLOUD_UPSCALING: only 1/N of the sky pixels ray-march each frame, the rest reuse reprojected history
+                bool fresh=true;
+                #if CLOUD_UPSCALING>0
+                {
+                    #if CLOUD_UPSCALING==2
+                        bool myTurn=((px.x+px.y+frameCounter)&1)==0;                // checkerboard
+                    #else
+                        const int bayerOrder[4]=int[4](0,3,1,2);
+                        bool myTurn=((px.x&1)+((px.y&1)<<1))==bayerOrder[frameCounter&3]; // 2x2 block
+                    #endif
+
+                    if(!myTurn){
+                        vec2 rr=RRES;
+                        float ry=cloudDir.y<0.?min(cloudDir.y,-.05):max(cloudDir.y,.05);
+                        float tt=clamp((CLOUD_ALTITUDE+CLOUD_THICKNESS*1.1-cameraPosition.y)/ry,0.,1e8);
+                        vec3 pw=cloudDir*tt+(cameraPosition-previousCameraPosition);
+                        vec4 ppc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(pw,1.));
+                        vec2 pUV=ppc.xy/max(abs(ppc.w),1e-5)*.5+.5;
+                        bool pOk=ppc.w>0.&&all(greaterThan(pUV,vec2(0.)))&&all(lessThan(pUV,vec2(1.)));
+
+                        // history is usable when the camera barely moved and all 4 bilinear texels are valid sky
+                        if(pOk&&length((pUV-texcoord)*rr)<4.){
+                            vec2 hp=pUV*rr-.5;
+                            ivec2 hb=ivec2(floor(hp));
+                            bool readA=(frameCounter&1)!=0;
+                            bool good=true;
+                            for(int i=0;i<4;i++){
+                                ivec2 hq=hb+ivec2(i&1,i>>1);
+                                if(any(lessThan(hq,ivec2(0)))||any(greaterThanEqual(hq,ivec2(rr)))){ good=false; break; }
+                                vec4 hh=cloudHistFetch(hq,readA);
+                                if(hh.a<1.){ good=false; break; }
+                            }
+                            fresh=!good;
+                        }
+                    }
+                }
+                #endif
+
+                vec4 cl=fresh?volumetricClouds(cloudDir,CLOUD_RAY_STEPS):vec4(0.);
+                cl=cloudTemporal(cl,cloudDir,px,texcoord,fresh);
                 color=vec4(albedo.rgb*(1.-cl.a)+cl.rgb,albedo.a);
             #endif
             return;
         }
-        cvali(px);
+        #ifdef VOLUMETRIC_CLOUDS
+            cloudHistStore(px,vec4(0.,0.,0.,-1.),(frameCounter&1)==0);
+        #endif
 
         vec3 worldPos=worldSpacePosition(texcoord,depth);
 
@@ -296,7 +367,7 @@
 
         vec4 nd=texelFetch(colortex3,px,0);
         if(dot(nd.xyz,nd.xyz)<.25){
-            color=vec4(cos(albedo.rgb*mix(vec3(.35),vec3(1.),visC),worldPos),albedo.a);
+            color=vec4(albedo.rgb*mix(vec3(.35),vec3(1.),visC),albedo.a);
             return;
         }
 
@@ -304,7 +375,7 @@
         vec4 spec=texelFetch(colortex2,px,0);
         vec2 lm=texelFetch(colortex4,px,0).rg;
 
-        vec3 albedoLin=toAP1(pow(albedo.rgb,vec3(2.2)));
+        vec3 albedoLin=pow(albedo.rgb,vec3(2.2));
         Material m=decodeLabPBR(spec,albedoLin);
         m.ao=nd.w;
 
@@ -351,15 +422,14 @@
         float skyVis=skyVisibility(lm.y);
         vec3 skyDiff=skyRadiance(skyDiffuseDir(N))*1.*skyVis*skyHemisphere(N);
         vec3 R=doreflc(N,reflect(-V,N),m.roughness);
-        vec3 skyR=skyRadiance(R);
+        vec3 skyEnv=skyRadiance(R);
         #ifdef VOLUMETRIC_CLOUDS
-            float rflW=1.-smoothstep(.2,.4,m.roughness);
-            if(rflW>.001&&R.y>.001&&skyVis>.01){
-                vec4 rflCl=volumetricClouds(R,16);
-                skyR=mix(skyR,skyR*(1.-rflCl.a)+rflCl.rgb,rflW);
+            if(m.roughness<.4&&skyVis>.01){
+                vec4 cl=volumetricClouds(R,CLOUD_REFLECTION_STEPS);
+                skyEnv=mix(skyEnv,skyEnv*(1.-cl.a)+cl.rgb,1.-smoothstep(.2,.4,m.roughness));
             }
         #endif
-        vec3 skyEnv=mix(skyR,skyDiff,m.roughness)*skyVis;
+        skyEnv=mix(skyEnv,skyDiff,m.roughness)*skyVis;
         skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
         vec3 ambient=evalAmbient(m,N,V,skyDiff,skyEnv);
 
@@ -367,7 +437,7 @@
         float specW=idrspecweight(m.roughness);
 
         float bl=pow(lm.x,4.);
-        vec3 blockLight=toAP1(vec3(1.,.52,.22))*24.*bl*m.ao;
+        vec3 blockLight=vec3(1.,.52,.22)*24.*bl*m.ao;
         vec3 blockDiff=m.diffuse*blockLight;
         vec3 blockSpec=sa*specW*blockLight;
         vec3 emissive=m.albedo*m.emission*16.;
@@ -375,7 +445,7 @@
         color1=vec4(lightCol*(m.diffuse+sa*specW)*m.ao*skyVis*7.,0.);
 
         vec3 hdr=direct+ambient+blockDiff+blockSpec+emissive;
-        color=vec4(cos(hdr,worldPos),albedo.a);
+        color=vec4(hdr,albedo.a);
     }
 
 #endif

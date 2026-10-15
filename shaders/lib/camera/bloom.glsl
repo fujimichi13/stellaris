@@ -2,7 +2,6 @@
     #define BLOOM_GLSL a
 
     #include "/lib/utility/uniforms.glsl"
-    #include "/lib/utility/color.glsl"
 
     vec3 softThreshold(vec3 c){
         float lum=max(max(c.r,max(c.g,c.b)),.0);
@@ -33,7 +32,7 @@
         vec3 groupC=(e+j+k+l+m)*.125;
         vec3 result=groupA*.25+groupB*.25+groupC*.5;
 
-        float lum=dot(result,vec3(.2722287168,.6740817658,.0536895174));
+        float lum=dot(result,vec3(.2126,.7152,.0722));
         if (lum>8.) result*=8./lum;
         return result;
     }

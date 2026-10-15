@@ -14,9 +14,7 @@
 #ifdef fsh
 
     #include "/settings.glsl"
-    #include "/lib/utility/math.glsl"
     #include "/lib/utility/uniforms.glsl"
-    #include "/lib/utility/color.glsl"
 
     /*
     const int colortex0Format = RGBA16F;
@@ -55,17 +53,6 @@
         return clamp(color,0.,1.);
     }
 
-    vec3 tonemap(vec3 t){ 
-        vec3 t1=t;
-        t*=.6;
-        t/=t+1.;
-        t=pow(t,vec3(-pow(t,vec3(.4))*.8+1.));
-        t=pow(t,vec3(pow(1.-t,vec3(1.))*.4+.6));
-        t=pow(t,vec3(.3/(1.+t1)+1.12));
-        t=saturate(t);
-        return t;	
-    }
-
     void main(){
         vec4 c=texture(colortex0,texcoord);
 
@@ -73,10 +60,7 @@
         vec3 hdr=c.rgb+bloom*(BLOOM_STRENGTH/.0625);
         hdr*=exp2(texelFetch(colortex1,ivec2(0),0).r);
 
-        hdr=fromAP1(hdr);
-        
         color=vec4(AgX(hdr),c.a);
-        //color=vec4(tonemap(max(hdr,0.)*.0625*2.3),c.a);
     }
 
 #endif

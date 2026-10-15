@@ -1,14 +1,11 @@
 #ifndef GEOMETRY_GLSL
     #define GEOMETRY_GLSL a
 
-    // hz2 = rd.x^2+rd.z^2 (= 1-rdY^2 for a unit ray). disc = b*b-cc rewritten as a difference of
-    // squares so it doesn't lose all precision when the camera is thousands of planet-radii away.
-    bool shellRoots(float camH,float rdY,float hz2,float h,float pr,out float t0,out float t1){
+    bool shellRoots(float camH,float rdY,float h,float pr,out float t0,out float t1){
         float b=(pr+camH)*rdY;
         float cc=(camH-h)*(2.*pr+camH+h);
-        float a=pr+h;
-        float perp=(pr+camH)*sqrt(max(hz2,0.));
-        float disc=(a-perp)*(a+perp);
+        float sn=sqrt(max((1.-rdY)*(1.+rdY),0.))*(pr+camH);
+        float disc=(pr+h-sn)*(pr+h+sn);
         t0=0.;
         t1=0.;
         if(disc<0.) return false;
@@ -26,15 +23,14 @@
         tExit=0.;
         if(camH<hIn&&rd.y<=0.) return false;
 
-        float hz2=rd.x*rd.x+rd.z*rd.z;
         float o0,o1;
-        if(!shellRoots(camH,rd.y,hz2,hOut,pr,o0,o1)||o1<0.) return false;
+        if(!shellRoots(camH,rd.y,hOut,pr,o0,o1)||o1<0.) return false;
 
         float entry=max(o0,0.);
         float ext=o1;
 
         float i0,i1;
-        if(shellRoots(camH,rd.y,hz2,hIn,pr,i0,i1)&&i1>0.){
+        if(shellRoots(camH,rd.y,hIn,pr,i0,i1)&&i1>0.){
             if(camH<hIn) entry=max(entry,i1);
             else if(i0>entry) ext=min(ext,i0);
         }

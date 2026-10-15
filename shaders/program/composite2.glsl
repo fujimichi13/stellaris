@@ -14,7 +14,6 @@
 #ifdef fsh
 
     #include "/settings.glsl"
-    #include "/lib/utility/color.glsl"
     #include "/lib/utility/uniforms.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/water/water.glsl"
@@ -24,6 +23,12 @@
     /* RENDERTARGETS:0,7 */
     layout(location = 0) out vec4 color;
     layout(location = 1) out vec4 color1;
+
+    vec3 ACES(vec3 v){
+        v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
+        v=(v*(v+.0245786)-.000090537)/(v*(.983729*v+.432951)+.238081);
+        return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
+    }
 
     const float K3[3]=float[3](.25,.5,.25);
 
@@ -59,9 +64,12 @@
 
         color1=vec4(texelFetch(colortex0,px,0).rgb,1.);
 
+        float depth0=texelFetch(depthtex0,px,0).r;
+
         bool skyPx=wgt.a>.5;
         bool glassPx=wn.w<-.5;
-        if(skyPx&&!glassPx){
+        bool waterPx=wn.w>.5&&depth0<1.&&isEyeInWater==0;
+        if(skyPx&&!glassPx&&!waterPx){
             color=base;
             return;
         }
@@ -115,11 +123,10 @@
 
         vec3 hdr=base.rgb+gi;
 
-        float depth0=texelFetch(depthtex0,px,0).r;
-        if(wn.w>.5&&depth0<1.&&isEyeInWater==0){
+        if(waterPx){
             vec4 tl=texelFetch(colortex14,px,0);
             //vec3 refl=texelFetch(colortex15,px,0).rgb;
-            vec3 tint=toAP1(pow(tl.rgb,vec3(2.2)));
+            vec3 tint=pow(tl.rgb,vec3(2.2));
             float skyVis=tl.a*tl.a;
 
             vec3 N=normalize(wn.xyz);
@@ -138,17 +145,18 @@
             if(texture(depthtex0,rUV(uvR)).r<depth0-1e-5&&texture(colortex13,rUV(uvR)).w<.5) uvR=texcoord;
 
             float d2=texture(depthtex1,rUV(uvR)).r;
+            bool noFloor=d2>=1.;
             vec3 Pu=(d2<1.)?worldSpacePosition(uvR,d2):Pw-V*40.;
-            float th=length(Pu-Pw);
-            float hu=max(Pw.y-Pu.y,0.);
+            float th=noFloor?128.:length(Pu-Pw);
+            float hu=noFloor?0.:max(Pw.y-Pu.y,0.);
 
             vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-            vec3 S=normalize(sunDir);
+            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
             float alt=eyeAlt(cameraPosition.y);
             vec3 sunCol=sunLight(S,alt);
-            vec3 moonCol=toAP1(vec3(.20,.30,.55))*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 moonCol=moonLight(S);
             vec3 lightCol=sunCol+moonCol;
-            vec3 sky=texture(samplerSky,vec2(.5,.75)).rgb;
+            vec3 sky=skyAmbient();
 
             float Lc=max(L.y,0.);
             float cosTL=waterCosT(Lc);
@@ -158,7 +166,7 @@
 
             vec3 Tv=exp(-sig*th);
             vec3 Td=exp(-sig*hu/cosTL)*(1.-waterFresnel(Lc));
-            vec3 under=(texture(colortex8,rUV(uvR)).rgb+gi)*Td*Tv;
+            vec3 under=noFloor?vec3(0.):(texture(colortex8,rUV(uvR)).rgb+gi)*Td*Tv;
 
             vec3 sunE=lightCol*Lc*(1.-waterFresnel(Lc))*skyVis;
             vec3 skyE=sky*3.14159*.94*skyVis;
@@ -171,7 +179,7 @@
 
         if(glassPx&&depth0<1.){
             vec4 tl=texelFetch(colortex14,px,0);
-            vec3 tint=toAP1(pow(tl.rgb,vec3(2.2)));
+            vec3 tint=pow(tl.rgb,vec3(2.2));
             float alpha=tl.a;
 
             float code=floor(-wn.w);
@@ -206,12 +214,12 @@
             float F=.04+.96*c5*c5*c5*c5*c5;
 
             vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
-            vec3 S=normalize(sunDir);
+            vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
             float alt=eyeAlt(cameraPosition.y);
             vec3 sunCol=sunLight(S,alt);
-            vec3 moonCol=toAP1(vec3(.20,.30,.55))*.35*(1.-smoothstep(-.12,.02,S.y));
+            vec3 moonCol=moonLight(S);
             vec3 lightCol=sunCol+moonCol;
-            vec3 sky=texture(samplerSky,vec2(.5,.75)).rgb;
+            vec3 sky=skyAmbient();
 
             float outdoors=skyLm*skyLm*skyLm*skyLm;
             vec3 scat=tint*alpha*outdoors*(sky*.8+lightCol*abs(dot(N,L))*.32);

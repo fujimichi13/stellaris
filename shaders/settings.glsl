@@ -38,19 +38,19 @@
     #define EXPOSURE_MAX 2.0 // [0.0 0.5 1.0 1.5 2.0 2.5 3.0 4.0 5.0]
 
     #define VOLUMETRIC_CLOUDS
-    #define CLOUD_RAY_STEPS 32 // [16 24 32 40 48]
+    #define CLOUD_RAY_STEPS 24 // [16 24 32 40 48]
+    #define CLOUD_REFLECTION_STEPS 12 // [6 8 12 16 24 32]
     #define CLOUD_COVERAGE 1.3 // [0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5]
-    #define CLOUD_DENSITY 1.2 // [0.2 0.3 0.4 0.5 0.6 0.8 1.0]
-    #define CLOUD_ALTITUDE 400.0 // [400.0 600.0 800.0 1000.0 1200.0 1500.0 2000.0 2500.0 3000.0]
-    #define CLOUD_THICKNESS 400.0 // [300.0 400.0 500.0 700.0 900.0 1200.0]
-    #define CLOUD_SCALE 0.6667 // [0.5 0.75 1.0 1.5 2.0 3.0]
-    #define CLOUD_SUNLIGHTING 1.0 // [0.5 0.75 1.0 1.25 1.5 2.0]
-    #define CLOUD_SKYLIGHTING 1.5 // [0.5 0.75 1.0 1.25 1.5 2.0]
-    #define CLOUD_TEMPORAL
-    #define CLOUD_TEMPORAL_BLEND 0.9 // [0.5 0.6 0.7 0.8 0.85 0.9 0.93 0.95]
+    #define CLOUD_DENSITY 0.4 // [0.2 0.3 0.4 0.5 0.6 0.8 1.0]
+    #define CLOUD_ALTITUDE 1200.0 // [400.0 600.0 800.0 1000.0 1200.0 1500.0 2000.0 2500.0 3000.0]
+    #define CLOUD_THICKNESS 1200.0 // [300.0 400.0 500.0 700.0 900.0 1200.0]
+    #define CLOUD_SCALE 2.0 // [0.5 0.75 1.0 1.5 2.0 3.0]
+    #define CLOUD_SUNLIGHTING 1.15 // [0.5 0.75 1.0 1.15 1.25 1.5 2.0]
+    #define CLOUD_SKYLIGHTING 1.15 // [0.5 0.75 1.0 1.15 1.25 1.5 2.0]
+    #define CLOUD_UPSCALING 0 // [0 2 4]
 
     #define VOLUMETRIC_LIGHT
-    #define VL_STEPS 16 // [8 12 16 24 32]
+    #define VL_STEPS 12 // [8 12 16 24 32]
     #define VL_DENSITY 1.0 // [0.25 0.5 0.75 1.0 1.5 2.0 3.0 4.0]
 
 #endif

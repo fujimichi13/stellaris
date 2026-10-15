@@ -14,7 +14,6 @@
 #ifdef fsh
 
     #include "/settings.glsl"
-    #include "/lib/utility/color.glsl"
     #include "/lib/utility/uniforms.glsl"
 
     /*
@@ -41,7 +40,7 @@
             for(int x=0;x<N;x++){
                 vec2 uv=(vec2(x,y)+.5)/float(N);
                 vec3 c=texelFetch(colortex0,ivec2(uv*vec2(res)),0).rgb;
-                sum+=log2(dot(c,vec3(.2722287168,.6740817658,.0536895174))+1e-4);
+                sum+=log2(dot(c,vec3(.2126,.7152,.0722))+1e-4);
             }
         }
 
