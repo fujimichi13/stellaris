@@ -24,12 +24,12 @@
     #include "/lib/atmosphere/volumetricClouds.glsl"
 
     /*
-    const int colortex3Format = RGBA16F;
-    const int colortex7Format = RGBA16F;
-    const int colortex8Format = RGBA16F;
+    const int colortex3Format=RGBA16F;
+    const int colortex7Format=RGBA16F;
+    const int colortex8Format=RGBA16F;
 
-    const bool shadowtex0Nearest = true;
-    const bool shadowtex1Nearest = true;
+    const bool shadowtex0Nearest=true;
+    const bool shadowtex1Nearest=true;
     */
 
     layout(r32ui) uniform uimage2D histX;
@@ -61,7 +61,7 @@
             vec2 rr=RRES;
 
             float ry=rd.y<0.?min(rd.y,-.05):max(rd.y,.05);
-            float t=clamp((CLOUD_ALTITUDE+CLOUD_THICKNESS*1.1-cameraPosition.y)/ry,0.,1e8);
+            float t=clamp(((CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.)*.5-cameraPosition.y)/ry,0.,1e8);
             vec3 wp=rd*t+(cameraPosition-previousCameraPosition);
             vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(wp,1.));
             vec2 prevUV=pc.xy/max(abs(pc.w),1e-5)*.5+.5;
@@ -154,15 +154,15 @@
     in vec2 texcoord;
 
     /* RENDERTARGETS:8,7 */
-    layout(location = 0) out vec4 color;
-    layout(location = 1) out vec4 color1;
+    layout(location=0) out vec4 color;
+    layout(location=1) out vec4 color1;
 
-    const float sunPathRotation = -40.0;
+    const float sunPathRotation=-40.0;
 
-    const int shadowMapResolution = 2048;
-    const float shadowDistance = 192.0;
+    const int shadowMapResolution=2048;
+    const float shadowDistance=192.0;
 
-    float rtwsmWarp1D(sampler2D tex, float u, out float slope){
+    float rtwsmWarp1D(sampler2D tex,float u,out float slope){
         slope=1.;
         if(u<=0.||u>=1.) return u;
 
@@ -179,7 +179,7 @@
         return mix(lo,hi,f);
     }
 
-    vec2 rtwsmWarp(vec2 clipXY, out vec2 slope){
+    vec2 rtwsmWarp(vec2 clipXY,out vec2 slope){
         vec2 uv=clipXY*.5+.5;
         vec2 w;
         w.x=rtwsmWarp1D(samplerWarpX,uv.x,slope.x);
@@ -192,13 +192,13 @@
         return vec4(c.xyz/c.w,1.);
     }
 
-    vec3 sampleShadow(vec3 worldPos, vec3 n, float NdotL){
-        vec4 clip = toShadowClip(worldPos);
+    vec3 sampleShadow(vec3 worldPos,vec3 n,float NdotL){
+        vec4 clip=toShadowClip(worldPos);
 
         vec2 slope;
         rtwsmWarp(clip.xy,slope);
         vec2 texelWorld=vec2(abs(2./shadowProjection[0][0]),abs(2./shadowProjection[1][1]))/(float(shadowMapResolution)*slope);
-        float texel=max(texelWorld.x, texelWorld.y);
+        float texel=max(texelWorld.x,texelWorld.y);
 
         float sinT=sqrt(max(1.-NdotL*NdotL,0.));
         float tanT=min(sinT/max(NdotL,.05),4.);
@@ -297,47 +297,60 @@
             #ifdef VOLUMETRIC_CLOUDS
                 vec3 cloudDir=normalize(worldSpacePosition(texcoord,1.));
 
-                // CLOUD_UPSCALING: only 1/N of the sky pixels ray-march each frame, the rest reuse reprojected history
                 bool fresh=true;
                 #if CLOUD_UPSCALING>0
-                {
-                    #if CLOUD_UPSCALING==2
-                        bool myTurn=((px.x+px.y+frameCounter)&1)==0;                // checkerboard
-                    #else
-                        const int bayerOrder[4]=int[4](0,3,1,2);
-                        bool myTurn=((px.x&1)+((px.y&1)<<1))==bayerOrder[frameCounter&3]; // 2x2 block
-                    #endif
+                    {
+                        #if CLOUD_UPSCALING==2
+                            bool myTurn=((px.x+px.y+frameCounter)&1)==0;
+                        #else
+                            const int bayerOrder[4]=int[4](0,3,1,2);
+                            bool myTurn=((px.x&1)+((px.y&1)<<1))==bayerOrder[frameCounter&3];
+                        #endif
 
-                    if(!myTurn){
-                        vec2 rr=RRES;
-                        float ry=cloudDir.y<0.?min(cloudDir.y,-.05):max(cloudDir.y,.05);
-                        float tt=clamp((CLOUD_ALTITUDE+CLOUD_THICKNESS*1.1-cameraPosition.y)/ry,0.,1e8);
-                        vec3 pw=cloudDir*tt+(cameraPosition-previousCameraPosition);
-                        vec4 ppc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(pw,1.));
-                        vec2 pUV=ppc.xy/max(abs(ppc.w),1e-5)*.5+.5;
-                        bool pOk=ppc.w>0.&&all(greaterThan(pUV,vec2(0.)))&&all(lessThan(pUV,vec2(1.)));
+                        if(!myTurn){
+                            vec2 rr=RRES;
+                            float ry=cloudDir.y<0.?min(cloudDir.y,-.05):max(cloudDir.y,.05);
+                            float tt=clamp(((CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.)*.5-cameraPosition.y)/ry,0.,1e8);
+                            vec3 pw=cloudDir*tt+(cameraPosition-previousCameraPosition);
+                            vec4 ppc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(pw,1.));
+                            vec2 pUV=ppc.xy/max(abs(ppc.w),1e-5)*.5+.5;
+                            bool pOk=ppc.w>0.&&all(greaterThan(pUV,vec2(0.)))&&all(lessThan(pUV,vec2(1.)));
 
-                        // history is usable when the camera barely moved and all 4 bilinear texels are valid sky
-                        if(pOk&&length((pUV-texcoord)*rr)<4.){
-                            vec2 hp=pUV*rr-.5;
-                            ivec2 hb=ivec2(floor(hp));
-                            bool readA=(frameCounter&1)!=0;
-                            bool good=true;
-                            for(int i=0;i<4;i++){
-                                ivec2 hq=hb+ivec2(i&1,i>>1);
-                                if(any(lessThan(hq,ivec2(0)))||any(greaterThanEqual(hq,ivec2(rr)))){ good=false; break; }
-                                vec4 hh=cloudHistFetch(hq,readA);
-                                if(hh.a<1.){ good=false; break; }
+                            if(pOk&&length((pUV-texcoord)*rr)<4.){
+                                vec2 hp=pUV*rr-.5;
+                                ivec2 hb=ivec2(floor(hp));
+                                bool readA=(frameCounter&1)!=0;
+                                bool good=true;
+                                for(int i=0;i<4;i++){
+                                    ivec2 hq=hb+ivec2(i&1,i>>1);
+                                    if(any(lessThan(hq,ivec2(0)))||any(greaterThanEqual(hq,ivec2(rr)))){ good=false; break; }
+                                    vec4 hh=cloudHistFetch(hq,readA);
+                                    if(hh.a<1.){ good=false; break; }
+                                }
+                                fresh=!good;
                             }
-                            fresh=!good;
                         }
                     }
-                }
                 #endif
 
                 vec4 cl=fresh?volumetricClouds(cloudDir,CLOUD_RAY_STEPS):vec4(0.);
                 cl=cloudTemporal(cl,cloudDir,px,texcoord,fresh);
-                color=vec4(albedo.rgb*(1.-cl.a)+cl.rgb,albedo.a);
+                vec3 sunS=sunDirection();
+                vec3 sunC=vec3(0.);
+                float sunD=smoothstep(.9998,.99985,dot(cloudDir,sunS));
+                if(sunD>0.){
+                    float sunAlt=eyeAlt(cameraPosition.y);
+                    if(sunAlt>50.){
+                        vec4 sunT;
+                        float sunG;
+                        calcInscattering(vec3(0.,R+sunAlt,0.),cloudDir,sunS,samplerTransmittance,sunT,sunG);
+                        sunC=toRGB(sunIrr*sunT)*sunD*(sunG<0.?1.:0.)*30.;
+                    }else{
+                        sunC=toRGB(sunIrr*lutT(samplerTransmittance,sunS.y,sunAlt*.01))*sunD*smoothstep(-.02,0.,cloudDir.y)*30.;
+                    }
+                }
+                float sunTr=pow(1.-cl.a,6.)*(1.-smoothstep(.2,.8,saturate(cloudRain)));
+                color=vec4(max(albedo.rgb-sunC,0.)*(1.-cl.a)+cl.rgb+sunC*sunTr,albedo.a);
             #endif
             return;
         }
@@ -356,7 +369,7 @@
 
         vec4 shadowClip=toShadowClip(worldPos);
         vec2 suv=shadowClip.xy*.5+.5;
-        if(((px.x&3)|(px.y&3))==0 && suv.x>=0.&&suv.x<=1.&&suv.y>=0.&&suv.y<=1.){
+        if(((px.x&3)|(px.y&3))==0&&suv.x>=0.&&suv.x<=1.&&suv.y>=0.&&suv.y<=1.){
             int binX=clamp(int(suv.x*float(256)),0,256-1);
             int binY=clamp(int(suv.y*float(256)),0,256-1);
             imageAtomicAdd(histX,ivec2(binX,0),1u);
@@ -431,20 +444,18 @@
         #endif
         skyEnv=mix(skyEnv,skyDiff,m.roughness)*skyVis;
         skyEnv*=mix(.15,1.,smoothstep(-.1,.05,R.y));
-        vec3 ambient=evalAmbient(m,N,V,skyDiff,skyEnv);
+        vec3 ambient=evalAmbient(m,N,V,vec3(0.),skyEnv);
 
         vec3 sa=specalbedo(m,max(dot(N,V),1e-3));
         float specW=idrspecweight(m.roughness);
 
-        float bl=pow(lm.x,4.);
-        vec3 blockLight=vec3(1.,.52,.22)*24.*bl*m.ao;
-        vec3 blockDiff=m.diffuse*blockLight;
-        vec3 blockSpec=sa*specW*blockLight;
         vec3 emissive=m.albedo*m.emission*16.;
 
-        color1=vec4(lightCol*(m.diffuse+sa*specW)*m.ao*skyVis*7.,0.);
+        color1=vec4(m.diffuse*nd.w,0.);
+        
+        vec3 wf=m.diffuse*vec3(1.,.62,.32)*.025*m.ao;
 
-        vec3 hdr=direct+ambient+blockDiff+blockSpec+emissive;
+        vec3 hdr=direct+ambient+emissive+wf;
         color=vec4(hdr,albedo.a);
     }
 

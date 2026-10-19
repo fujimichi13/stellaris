@@ -12,18 +12,18 @@
         return c*contrib;
     }
 
-    vec3 downsample13(sampler2D tex, vec2 uv, vec2 texel){
-        vec3 a=texture(tex,uv+vec2(-2., 2.)*texel).rgb;
-        vec3 b=texture(tex,uv+vec2( 0., 2.)*texel).rgb;
-        vec3 c=texture(tex,uv+vec2( 2., 2.)*texel).rgb;
-        vec3 d=texture(tex,uv+vec2(-2., 0.)*texel).rgb;
+    vec3 downsample13(sampler2D tex,vec2 uv,vec2 texel){
+        vec3 a=texture(tex,uv+vec2(-2.,2.)*texel).rgb;
+        vec3 b=texture(tex,uv+vec2( 0.,2.)*texel).rgb;
+        vec3 c=texture(tex,uv+vec2( 2.,2.)*texel).rgb;
+        vec3 d=texture(tex,uv+vec2(-2.,0.)*texel).rgb;
         vec3 e=texture(tex,uv).rgb;
-        vec3 f=texture(tex,uv+vec2( 2., 0.)*texel).rgb;
+        vec3 f=texture(tex,uv+vec2( 2.,0.)*texel).rgb;
         vec3 g=texture(tex,uv+vec2(-2.,-2.)*texel).rgb;
         vec3 h=texture(tex,uv+vec2( 0.,-2.)*texel).rgb;
         vec3 i=texture(tex,uv+vec2( 2.,-2.)*texel).rgb;
-        vec3 j=texture(tex,uv+vec2(-1., 1.)*texel).rgb;
-        vec3 k=texture(tex,uv+vec2( 1., 1.)*texel).rgb;
+        vec3 j=texture(tex,uv+vec2(-1.,1.)*texel).rgb;
+        vec3 k=texture(tex,uv+vec2( 1.,1.)*texel).rgb;
         vec3 l=texture(tex,uv+vec2(-1.,-1.)*texel).rgb;
         vec3 m=texture(tex,uv+vec2( 1.,-1.)*texel).rgb;
 
@@ -37,14 +37,14 @@
         return result;
     }
 
-    vec3 upsampleTent9(sampler2D tex, vec2 uv, vec2 texel, float radius){
+    vec3 upsampleTent9(sampler2D tex,vec2 uv,vec2 texel,float radius){
         vec4 d=texel.xyxy*vec4(-1.,-1.,1.,1.)*radius;
         vec3 s=vec3(0.0);
         s+=texture(tex,uv+d.xy).rgb;
         s+=texture(tex,uv+vec2(0.,d.y)).rgb*2.;
         s+=texture(tex,uv+d.zy).rgb;
         s+=texture(tex,uv+vec2(d.x,0.)).rgb*2.;
-        s+=texture(tex,uv).rgb * 4.;
+        s+=texture(tex,uv).rgb*4.;
         s+=texture(tex,uv+vec2(d.z,0.)).rgb*2.;
         s+=texture(tex,uv+d.xw).rgb;
         s+=texture(tex,uv+vec2(0.,d.w)).rgb*2.;

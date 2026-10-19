@@ -21,8 +21,8 @@
     in vec2 texcoord;
 
     /* RENDERTARGETS:0,7 */
-    layout(location = 0) out vec4 color;
-    layout(location = 1) out vec4 color1;
+    layout(location=0) out vec4 color;
+    layout(location=1) out vec4 color1;
 
     vec3 ACES(vec3 v){
         v=mat3(.59719,.0760,.0284,.35458,.90834,.13383,.04823,.01566,.83777)*max(v,0.)*.0625;
@@ -32,7 +32,10 @@
 
     const float K3[3]=float[3](.25,.5,.25);
 
-    vec3 worldSpacePosition(vec2 uv, float depth){
+    layout(rgba16f) uniform image2D AtrA;
+    layout(rgba16f) uniform image2D GeoCurrent;
+
+    vec3 worldSpacePosition(vec2 uv,float depth){
         vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
         return (gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz;
     }
@@ -76,8 +79,7 @@
 
         vec3 gi=vec3(0.);
 
-        #ifdef RSM_ENABLED
-          if(!skyPx){
+        if(!skyPx){
             ivec2 fullRes=ivec2(RRES);
             ivec2 hres=fullRes>>1;
             ivec2 hp=px>>1;
@@ -88,8 +90,8 @@
             float d0=length((gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz);
             vec3 n0=normalize(texelFetch(colortex3,px,0).xyz);
 
-            vec4 h0=texelFetch(colortex5,hp,0);
-            int s=(h0.a<6.)?2:1;
+            vec4 h0=imageLoad(AtrA,hp);
+            int s=1;
             
             vec3 sum=vec3(0.);
             float wsum=0.;
@@ -99,10 +101,10 @@
                     ivec2 q=hp+ivec2(x,y)*s;
                     if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,hres))) continue;
 
-                    float dq=texelFetch(colortex6,q,0).r;
+                    float dq=imageLoad(GeoCurrent,q).a;
                     if(dq<=0.) continue;
 
-                    vec3 gq=texelFetch(colortex5,q,0).rgb;
+                    vec3 gq=imageLoad(AtrA,q).rgb;
                     if(any(isnan(gq))) continue;
 
                     vec3 nq=normalize(texelFetch(colortex3,min(q*2,fullRes-1),0).xyz);
@@ -118,8 +120,7 @@
 
             gi=(wsum>1e-4)?sum/wsum:h0.rgb;
             gi*=wgt.rgb;
-          }
-        #endif
+        }
 
         vec3 hdr=base.rgb+gi;
 

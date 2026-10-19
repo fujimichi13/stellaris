@@ -99,7 +99,9 @@
         float stratus=smoothstep(0.,.08,h)*(1.-smoothstep(.12,.3,h));
         float cu=smoothstep(0.,.01,h)*(1.-smoothstep(.5,.85,h));
 
-        return stratus*wS+cu*wCu+gC(h)*wCb;
+        float base=stratus*wS+cu*wCu+gC(h)*wCb;
+        float nimbus=smoothstep(0.,.05,h)*(1.-smoothstep(.6,.95,h));
+        return mix(base,max(base,nimbus),saturate(cloudRain));
     }
 
     vec2 cloudCoverageMap(vec3 wp){
@@ -115,19 +117,23 @@
         float type=saturate(get2DNoise(tp)*.5+get2DNoise(tp*1.7+5.)*.5);
         type=mix(type*.6,type,coverage);
 
+        float r=saturate(cloudRain);
+        coverage=mix(coverage,saturate(coverage*.4+.7),r);
+        type=mix(type,.55+type*.25,r);
+
         return vec2(coverage,type);
     }
 
     vec2 cloudDensity(vec3 wp,float lr,float detail,int co,bool lite){
         float t=frameTimeCounter*CLOUD_SPEED*.3;
 
-        float maxT=max(CLOUD_THICKNESS*2.2,1.);
+        float maxT=max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.);
         float gh=curvedHeight(wp,cameraPosition.xz,cloudPR());
-        if(gh<CLOUD_ALTITUDE||gh>CLOUD_ALTITUDE+maxT) return vec2(0.);
-        float nh=saturate((gh-CLOUD_ALTITUDE)/maxT);
+        if(gh<(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))||gh>(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+maxT) return vec2(0.);
+        float nh=saturate((gh-(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))))/maxT);
 
         vec2 weather=cloudCoverageMap(wp);
-        float cov=mix(CLOUD_COVERAGE*.6,CLOUD_COVERAGE*1.4,weather.x);
+        float cov=mix(CLOUD_COVERAGE*.6,CLOUD_COVERAGE*1.4,weather.x)*(1.+.35*saturate(cloudRain));
         float type=weather.y;
 
         float ha=ctg(type,nh);
@@ -164,7 +170,7 @@
             erosion=(rc*.7+rf*.3)*edge;
         }
 
-        noise-=detail*(.5+1.1*(1.-smoothstep(0.,.65,noise)));
+        noise-=detail*(.5+1.1*(1.-smoothstep(0.,.65,noise)))*(1.-.4*saturate(cloudRain));
         noise-=erosion*.4*ha;
         noise*=ha*2.;
         noise-=ha*.9+nh*.7;
@@ -173,14 +179,14 @@
         float x=(noise-(1.-cov))*mix(1.6,.9,saturate(noise*2.));
         float tw=mix(.22,1.15,erosion);
 
-        return vec2(smoothstep(-tw,tw,x*20.),smoothstep(-tw,tw,x*2.))*ha*ha*CLOUD_DENSITY;
+        return vec2(smoothstep(-tw,tw,x*20.),smoothstep(-tw,tw,x*2.))*ha*ha*CLOUD_DENSITY*(1.+1.5*saturate(cloudRain));
     }
 
     bool cloudEmpty(vec3 wp){
-        float maxT=max(CLOUD_THICKNESS*2.2,1.);
+        float maxT=max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.);
         float gh=curvedHeight(wp,cameraPosition.xz,cloudPR());
-        if(gh<CLOUD_ALTITUDE||gh>CLOUD_ALTITUDE+maxT) return true;
-        float nh=saturate((gh-CLOUD_ALTITUDE)/maxT);
+        if(gh<(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))||gh>(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+maxT) return true;
+        float nh=saturate((gh-(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))))/maxT);
         return ctg(cloudCoverageMap(wp).y,nh)<.0005;
     }
 
@@ -204,7 +210,7 @@
     vec2 cloudBoundaryTop(vec3 wp,vec3 sd,float maxT){
         float S=max(CLOUD_SCALE,1e-4);
         float hx=curvedHeight(wp,cameraPosition.xz,cloudPR());
-        float dTop=clamp((CLOUD_ALTITUDE+maxT*.6-hx)/max(abs(sd.y),.15)*sign(sd.y+1e-5),0.,2500.*S);
+        float dTop=clamp(((CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+maxT*.6-hx)/max(abs(sd.y),.15)*sign(sd.y+1e-5),0.,2500.*S);
         vec3 pe=wp+sd*dTop;
         float e=600.*S;
         float h0=cloudTopProxy(pe);
@@ -221,7 +227,7 @@
         float far=4200.*CLOUD_SCALE;
         float d1=40.*CLOUD_SCALE*(.75+.5*dither);
         float d2=140.*CLOUD_SCALE*(.75+.5*dither);
-        float maxT=max(CLOUD_THICKNESS*2.2,1.);
+        float maxT=max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.);
 
         const int q=6;
         const int NS=q+2;
@@ -271,7 +277,7 @@
                 float sTr=saturate(sSig[j]/max(sigRef,1e-5));
 
                 float hs=curvedHeight(wp+sd*sDist[j],cameraPosition.xz,cloudPR());
-                float hloc=saturate((hs-CLOUD_ALTITUDE)/maxT)/max(Hcol*.9,.12);
+                float hloc=saturate((hs-(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))))/maxT)/max(Hcol*.9,.12);
                 float Cbot=1.-exp(-max(hloc,0.)/Hsoft*1.5);
 
                 float kern=exp(-.05477*odc[j])/max(sDist[j]*sigRef,1.);
@@ -337,6 +343,10 @@
         float distXZ=length(wp.xz-cameraPosition.xz)/max(CLOUD_SCALE,1e-4);
         float dist=length(wp-cameraPosition)/max(CLOUD_SCALE,1e-4);
 
+        float rw=saturate(cloudRain);
+        sunCol*=1.-.6*rw;
+        amb*=1.-.3*rw;
+
         int co=int((1.-smoothstep(5000.,40000.,distXZ))*2.+.5);
         float LdotV=dot(rd,sd);
 
@@ -352,7 +362,7 @@
         float alphaC=1.-exp(-sigma*dt);
         if(alphaC<.0015) return vec4(0.);
 
-        float h01=saturate((curvedHeight(wp,cameraPosition.xz,cloudPR())-CLOUD_ALTITUDE)/max(CLOUD_THICKNESS*2.2,1.));
+        float h01=saturate((curvedHeight(wp,cameraPosition.xz,cloudPR())-(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))))/max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.));
 
         vec2 sunPhi=getSun(wp,sd,dither2);
         float sunOD=sunPhi.x;
@@ -367,9 +377,11 @@
         col+=sunCol*phiFwd*CLOUD_SUNLIGHTING;
         float fwd=pow(saturate(LdotV),10.);
         float thin=1.-smoothstep(0.,.55,dens.x);
-        float silver=fwd*(.25+.75*thin)*exp(-sunOD*.6)*(1.-.5*h01);
+        float silver=(fwd+4.*pow(saturate(LdotV),48.))*(.2+.8*thin)*exp(-sunOD*.35)*(1.-.4*h01)*(1.-rw)*2.;
         col+=sunCol*silver;
-        float air=min(dist,60000.)*exp2(-max(cameraPosition.y-CLOUD_ALTITUDE,0.)*1.8e-4);
+        col*=mix(1.,.5+.5*smoothstep(0.,.6,h01),rw);
+        col=mix(col,vec3(dot(col,vec3(.2126,.7152,.0722))),.4*rw);
+        float air=min(dist,60000.)*exp2(-max(cameraPosition.y-(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))),0.)*1.8e-4);
         col*=exp2(-air*6.5e-5);
         col+=amb*(1.-exp2(-air*8.5e-5));
 
@@ -381,15 +393,49 @@
     }
 
     vec4 cloudRayMarch(vec3 rd,vec3 sd,vec3 amb,vec3 sunCol,int steps){
-        float maxT=max(CLOUD_THICKNESS*2.2,1.);
+        float maxT=max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.);
         float tIn,tOut;
-        if(!shellIntersect(cameraPosition.y,rd,CLOUD_ALTITUDE,CLOUD_ALTITUDE+maxT,cloudPR(),tIn,tOut)) return vec4(0.);
+        if(!shellIntersect(cameraPosition.y,rd,(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))),(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+maxT,cloudPR(),tIn,tOut)) return vec4(0.);
         tOut=min(tOut,tIn+100000.);
         if(tOut<=tIn) return vec4(0.);
 
         float toff=fract(float(frameCounter%32)*.61803398875);
         float dither=fract(ign(gl_FragCoord.xy)+toff);
         float dither2=fract(ign(gl_FragCoord.xy+vec2(5.3,11.7))+toff*1.7);
+
+        vec3 shaft=vec3(0.);
+        vec3 sS=sunDirection();
+        if(sS.y>0.){
+            float mc=-dot(rd,sS);
+            float rp=RayleighPhaseFunction(mc);
+            float ap=AerosolPhaseFunction(mc);
+            float kmH=length(rd.xz)*.001;
+            float cb=CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain));
+            vec4 tauV=vec4(0.);
+            vec4 loss=vec4(0.);
+            for(int i=0;i<8;i++){
+                float ta=tOut*sq(float(i)/8.);
+                float tb=tOut*sq(float(i+1)/8.);
+                vec3 sp=cameraPosition+rd*mix(ta,tb,dither);
+                float h=eyeAlt(sp.y);
+                float ds=length(vec2(kmH*(tb-ta),eyeAlt(cameraPosition.y+rd.y*tb)-eyeAlt(cameraPosition.y+rd.y*ta)));
+                vec4 rS,aS,ex;
+                coefficients(h,rS,aS,ex);
+                vec4 Tv=exp(-(tauV+ex*ds*.5));
+                tauV+=ex*ds;
+
+                float sh=curvedHeight(sp,cameraPosition.xz,cloudPR());
+                float dA=max((cb-sh)/max(sS.y,.02),0.);
+                float dB=min((cb+maxT-sh)/max(sS.y,.02),dA+12000.*CLOUD_SCALE);
+                float od=0.;
+                if(dB>dA){
+                    for(int k=0;k<3;k++) od+=cloudDensity(sp+sS*mix(dA,dB,(float(k)+dither2)/3.),1.,0.,0,true).x*.12*(dB-dA)/3.;
+                }
+                loss+=Tv*sunIrr*lutT(samplerTransmittance,sS.y,h*.01)*(rS*rp+aS*ap)*(1.-exp(-od))*ds;
+            }
+            shaft=toRGB(loss)*smoothstep(0.,.1,sS.y);
+            shaft*=min(1.,.5/max(dot(shaft,vec3(.2126,.7152,.0722)),1e-4));
+        }
 
         vec3 acc=vec3(0.);
         float vis=1.;
@@ -410,7 +456,7 @@
             vis*=1.-s.a;
         }
 
-        return vec4(acc,1.-vis);
+        return vec4(acc-shaft*vis,1.-vis);
     }
 
     float crn(vec3 wp){

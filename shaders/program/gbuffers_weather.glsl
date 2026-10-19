@@ -22,12 +22,11 @@
     in vec2 texcoord;
 
     /* RENDERTARGETS: 0 */
-    layout(location = 0) out vec4 color;
+    layout(location=0) out vec4 color;
 
     void main(){
-        vec4 albedo=texture(tex,texcoord,log2(RS))*glcolor;
-        if(albedo.a<.01) discard;
-        color=albedo;
+        color=vec4(0.);
+        discard;
     }
 
 #endif

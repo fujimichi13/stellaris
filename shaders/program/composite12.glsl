@@ -17,14 +17,14 @@
     #include "/lib/utility/uniforms.glsl"
 
     /*
-    const int colortex1Format = RGBA32F;
-    const bool colortex1Clear = false;
+    const int colortex1Format=RGBA32F;
+    const bool colortex1Clear=false;
     */
 
     in vec2 texcoord;
 
     /* RENDERTARGETS:1 */
-    layout(location = 0) out vec4 color;
+    layout(location=0) out vec4 color;
 
     void main(){
         if(any(notEqual(ivec2(gl_FragCoord.xy),ivec2(0)))) discard;

@@ -22,7 +22,7 @@
     in vec2 texcoord;
 
     /* RENDERTARGETS: 0 */
-    layout(location = 0) out vec4 color;
+    layout(location=0) out vec4 color;
 
     void main(){
         vec4 albedo=texture(tex,texcoord,log2(RS))*glcolor;

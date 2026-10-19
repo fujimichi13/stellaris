@@ -17,15 +17,15 @@
     #include "/lib/utility/uniforms.glsl"
 
     /*
-    const int colortex15Format = RGBA16F;
-    const bool colortex15Clear = false;
+    const int colortex15Format=RGBA16F;
+    const bool colortex15Clear=false;
     */
 
     in vec2 texcoord;
 
     /* RENDERTARGETS:0,15 */
-    layout(location = 0) out vec4 color;
-    layout(location = 1) out vec4 color1;
+    layout(location=0) out vec4 color;
+    layout(location=1) out vec4 color1;
 
     float luma(vec3 c){
         return dot(c,vec3(.2126,.7152,.0722));
@@ -37,14 +37,14 @@
         return c/max(1.-luma(c),1e-6);
     }
 
-    vec3 clipAABB(vec3 c, vec3 e, vec3 h){
+    vec3 clipAABB(vec3 c,vec3 e,vec3 h){
         vec3 v=h-c;
         vec3 a=abs(v/max(e,1e-4));
         float m=max(a.x,max(a.y,a.z));
         return (m>1.)?c+v/m:h;
     }
 
-    vec3 sampleHistory(vec2 uv, vec2 size){
+    vec3 sampleHistory(vec2 uv,vec2 size){
         vec2 pos=uv*size;
         vec2 c=floor(pos-.5)+.5;
         vec2 f=pos-c;

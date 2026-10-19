@@ -3,6 +3,7 @@
 
     uniform sampler2D noisetex;
     uniform sampler2D noisetex1;
+    uniform sampler2D rippleTex;
 
     uniform sampler2D colortex0;
     uniform sampler2D colortex1;
@@ -29,7 +30,6 @@
     uniform sampler2D shadowtex1;
 
     uniform sampler2D shadowcolor0;
-    uniform sampler2D shadowcolor1;
     
     uniform sampler2D tex;
     uniform sampler2D normals;
@@ -48,6 +48,7 @@
     uniform float viewHeight;
     uniform float frameTimeCounter;
     uniform float rainStrength;
+    uniform float cloudRain;
 
     uniform int frameCounter;
     uniform int isEyeInWater;

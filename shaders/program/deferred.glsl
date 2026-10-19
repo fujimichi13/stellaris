@@ -21,10 +21,10 @@
     in vec2 texcoord;
 
     /* RENDERTARGETS:0,4 */
-    layout(location = 0) out vec4 color;
-    layout(location = 1) out vec4 color4;
+    layout(location=0) out vec4 color;
+    layout(location=1) out vec4 color4;
 
-    vec3 worldSpacePosition(vec2 uv, float depth){
+    vec3 worldSpacePosition(vec2 uv,float depth){
         vec4 clip=vec4(uv*2.-1.,depth*2.-1.,1.);
         vec4 viewSpace=gbufferProjectionInverse*clip;
         viewSpace/=viewSpace.w;

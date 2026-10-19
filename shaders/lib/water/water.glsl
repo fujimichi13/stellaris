@@ -5,7 +5,7 @@
         return mat2(-.7373689,-.6754903,.6754903,-.7373689)*p;
     }
 
-    vec4 textureBicubic(sampler2D s, vec2 uv){
+    vec4 textureBicubic(sampler2D s,vec2 uv){
         vec2 sz=vec2(textureSize(s,0));
         vec2 x=uv*sz-.5;
         vec2 f=fract(x);
@@ -21,13 +21,13 @@
         return g0.y*(g0.x*texture(s,h0)+g1.x*texture(s,vec2(h1.x,h0.y)))+g1.y*(g0.x*texture(s,vec2(h0.x,h1.y))+g1.x*texture(s,h1));
     }
 
-    float wn1(vec2 c, vec2 dir, float t, bool useBicubic){
+    float wn1(vec2 c,vec2 dir,float t,bool useBicubic){
         vec2 uv=fract(c+dir*t);
         float n=1.-(useBicubic?textureBicubic(noisetex,uv).z:texture(noisetex,uv).z);
         return n*n;
     }
 
-    float wH(vec2 p, bool F){
+    float wH(vec2 p,bool F){
         float t=WAVE_SPEED*frameTimeCounter;
         vec2 q=WAVE_SCALE*p;
 
@@ -62,7 +62,7 @@
         return normalize(cross(dZ,dX));
     }
 
-    vec3 wNP(vec2 p, vec3 V){
+    vec3 wNP(vec2 p,vec3 V){
         vec2 st=V.xz/max(V.y,.1)*WAVE_PARALLAX_STRENGTH;
 
         float h=wH(p,false);

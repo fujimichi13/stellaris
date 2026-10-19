@@ -2,7 +2,11 @@
     #define SETTINGS_GLSL a
 
     #define COLORED_SHADOW
-    #define RSM_ENABLED
+
+    #define PT_BOUNCES 2 // [1 2 3 4]
+    #define PT_SAMPLES 1 // [1 2 3 4]
+    
+    #define MAX_QUADS 262144 // [65536 131072 262144 524288]
 
     #define BLOOM
     #define BLOOM_STRENGTH 0.1 // [0.0 0.02 0.05 0.1 0.15 0.2 0.3 0.5]
@@ -24,6 +28,9 @@
     #define GTAO_DIRECTION_SAMPLE_COUNT 6 // [2 3 4 5 6 8 10 12 16]
     #define GTAO_SEARCH_RADIUS 1.5 // [0.25 0.5 0.75 1.0 1.5 2.0 2.5 3.0 4.0 6.0]
     #define GTAO_INTENSITY 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 2.0 2.5 3.0]
+
+    #define PUDDLES_ENABLED
+    #define PUDDLES_AMOUNT 1.0 // [0.0 0.25 0.5 0.75 1.0 1.25 1.5]
 
     #define SKYLIGHT_CURVE 6.0 // [3.0 4.0 5.0 6.0 8.0 10.0 12.0]
 
@@ -52,5 +59,8 @@
     #define VOLUMETRIC_LIGHT
     #define VL_STEPS 12 // [8 12 16 24 32]
     #define VL_DENSITY 1.0 // [0.25 0.5 0.75 1.0 1.5 2.0 3.0 4.0]
+
+    #define PLAYER_CULL
+    #define MAX_QUADS 262144 // [65536 131072 262144 524288]
 
 #endif

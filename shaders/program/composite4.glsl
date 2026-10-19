@@ -30,9 +30,9 @@
     in vec2 texcoord;
 
     /* RENDERTARGETS:0 */
-    layout(location = 0) out vec4 color;
+    layout(location=0) out vec4 color;
 
-    int sur(ivec2 q, out vec3 n, out float rough){
+    int sur(ivec2 q,out vec3 n,out float rough){
         n=vec3(0.);
         rough=0.;
         if(texelFetch(depthtex0,q,0).r>=1.) return 0;
@@ -57,7 +57,7 @@
         return 1;
     }
 
-    vec4 reflectionFilter(ivec2 px, float depthC, int cls, vec3 nC, float roughC){
+    vec4 reflectionFilter(ivec2 px,float depthC,int cls,vec3 nC,float roughC){
         vec4 rawC=texelFetch(colortex8,px,0);
 
         ivec2 res=ivec2(RRES);

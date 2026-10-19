@@ -39,8 +39,8 @@
     #include "/lib/water/water.glsl"
 
     /*
-    const int colortex13Format = RGBA16F;
-    const int colortex15Format = RGBA16F;
+    const int colortex13Format=RGBA16F;
+    const int colortex15Format=RGBA16F;
     */
 
     in vec4 glcolor;
@@ -52,8 +52,8 @@
     in float isglass;
 
     /* RENDERTARGETS: 13,14 */
-    layout(location = 0) out vec4 color;
-    layout(location = 1) out vec4 color1;
+    layout(location=0) out vec4 color;
+    layout(location=1) out vec4 color1;
 
     void main(){
         vec4 albedo=texture(tex,texcoord)*glcolor;

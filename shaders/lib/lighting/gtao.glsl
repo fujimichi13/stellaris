@@ -4,7 +4,7 @@
     #include "/lib/utility/math.glsl"
     #include "/lib/utility/dithering.glsl"
 
-    vec3 viewPos(ivec2 px, float depth){
+    vec3 viewPos(ivec2 px,float depth){
         vec2 uv=(vec2(px)+.5)/RRES;
         vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
         return v.xyz/v.w;
@@ -24,7 +24,7 @@
         return x>=0.?r:PI-r;
     }
 
-    vec3 viewnormal(ivec2 px, vec3 P, float d){
+    vec3 viewnormal(ivec2 px,vec3 P,float d){
         ivec2 res=ivec2(RRES);
         ivec2 l=clamp(px-ivec2(1,0),ivec2(0),res-1);
         ivec2 r=clamp(px+ivec2(1,0),ivec2(0),res-1);
@@ -49,7 +49,7 @@
         return n;
     }
 
-    float c(ivec2 px, float depth){
+    float c(ivec2 px,float depth){
         if(!validDepth(depth)) return 1.;
 
         ivec2 res=ivec2(RRES);
@@ -180,14 +180,14 @@
         return (wsum>1e-4)?sum/wsum:centerAO;
     }
 
-    vec3 multibounce(float ao, vec3 albedo){
+    vec3 multibounce(float ao,vec3 albedo){
         vec3 a=2.0404*albedo-.3324;
         vec3 b=-4.7951*albedo+.6417;
         vec3 c=2.7552*albedo+.6903;
         return max(vec3(ao),((ao*a+b)*ao+c)*ao);
     }
 
-    float calcGTAO(ivec2 px, vec3 albedoLin){
+    float calcGTAO(ivec2 px,vec3 albedoLin){
         float g=pow(max(gfilter(px),1e-4),float(GTAO_INTENSITY));
         return multibounce(g,vec3(dot(albedoLin,vec3(.3333333)))).x;
     }

@@ -3,7 +3,7 @@
 
     #include "/lib/utility/math.glsl"
 
-    float rtwsmWarp1Dvec2(sampler2D lut, float u)
+    float rtwsmWarp1Dvec2(sampler2D lut,float u)
     {
         if (u<=0||u>= 1.) return u;
 
@@ -38,7 +38,7 @@
         }
         #ifdef COLORED_SHADOW
             else if (z>texelFetch(shadowtex0,tc,0).r){
-                vec3 tint=pow(texelFetch(shadowcolor0,tc,0).rgb, vec3(2.2));
+                vec3 tint=pow(texelFetch(shadowcolor0,tc,0).rgb,vec3(2.2));
 
                 float mx=max(max(tint.r,tint.g),max(tint.b,1e-3));
                 float mn=min(min(tint.r,tint.g),tint.b);
@@ -55,7 +55,7 @@
         return mix(vec3(1.),vis,1.-smoothstep(.85,1.,edge));
     }
 
-    vec3 volumetricLight(vec3 dir, float rayLen, vec3 L, vec3 lightCol, vec3 ambient, float jitter, out vec3 T)
+    vec3 volumetricLight(vec3 dir,float rayLen,vec3 L,vec3 lightCol,vec3 ambient,float jitter,out vec3 T)
     {
         T=vec3(1.);
 

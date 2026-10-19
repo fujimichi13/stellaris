@@ -1,7 +1,7 @@
 #ifndef WATER_FOG_GLSL
     #define WATER_FOG_GLSL a
 
-    vec3 calcWaterFog(vec3 sceneColor, vec3 dir, float dist, float camDepth, vec3 lightDir, vec3 lightCol, vec3 skyCol){
+    vec3 calcWaterFog(vec3 sceneColor,vec3 dir,float dist,float camDepth,vec3 lightDir,vec3 lightCol,vec3 skyCol){
         vec3 sigA=vec3(.45,.07,.012)*WATER_FOG_DENSITY;
         vec3 sigS=vec3(WATER_FOG_SCATTERING);
         vec3 sigT=sigA+sigS;

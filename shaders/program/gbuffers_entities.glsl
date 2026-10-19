@@ -31,10 +31,10 @@
     in vec3 vNormal;
 
     /* RENDERTARGETS: 0,2,3,4 */
-    layout(location = 0) out vec4 color;
-    layout(location = 1) out vec4 color2;
-    layout(location = 2) out vec4 color3;
-    layout(location = 3) out vec4 color4;
+    layout(location=0) out vec4 color;
+    layout(location=1) out vec4 color2;
+    layout(location=2) out vec4 color3;
+    layout(location=3) out vec4 color4;
 
     void main(){
         vec4 albedo=texture(tex,texcoord,log2(RS))*glcolor;
