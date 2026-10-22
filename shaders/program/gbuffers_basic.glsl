@@ -22,7 +22,7 @@
     layout(location=0) out vec4 color;
 
     void main(){
-        color=glcolor;
+        color=vec4(1.,1.,1.,1.);
     }
 
 #endif

@@ -52,7 +52,7 @@
         if(dot(nd.xyz,nd.xyz)<.25) return 0;
         float sr=texelFetch(colortex2,q,0).r;
         rough=max((1.-sr)*(1.-sr),.045);
-        if(rough>=.4) return 0;
+        if(rough>=.6) return 0;
         n=normalize(nd.xyz);
         return 1;
     }
@@ -62,7 +62,7 @@
 
         ivec2 res=ivec2(RRES);
 
-        float radius=(cls==1)?mix(2.,7.,smoothstep(.05,.4,roughC)):2.5;
+        float radius=(cls==1)?mix(2.,7.,smoothstep(.05,.6,roughC)):2.5;
         radius*=float(1.);
         if(radius<.75) return rawC;
 
@@ -126,7 +126,7 @@
 
         vec4 nd=texelFetch(colortex3,px,0);
 
-        if(depth<1.&&dot(nd.xyz,nd.xyz)>=.25&&abs(texelFetch(colortex13,px,0).w)<.5){
+        if(depth<1.&&depth>=.56&&dot(nd.xyz,nd.xyz)>=.25&&abs(texelFetch(colortex13,px,0).w)<.5){
             vec3 N=normalize(nd.xyz);
             vec4 spec=texelFetch(colortex2,px,0);
             vec2 lm=texelFetch(colortex4,px,0).rg;
@@ -138,13 +138,13 @@
                 m.ao*=calcGTAO(px,albedoLin);
             #endif
 
-            if(m.roughness<.4){
+            if(m.roughness<.6){
                 vec3 P=viewSpacePosition(texcoord,depth);
                 vec3 V=-normalize(mat3(gbufferModelViewInverse)*P);
                 vec3 Rm=reflect(-V,N);
 
                 vec4 hit=reflectionFilter(px,depth,1,N,m.roughness);
-                hit.a*=1.-smoothstep(.4*.5,.4,m.roughness);
+                hit.a*=1.-smoothstep(.6*.5,.6,m.roughness);
 
                 if(hit.a>.001){
                     float skyVis=skyVisibility(lm.y);
@@ -330,14 +330,14 @@
                     if(suv.x>0.&&suv.x<1.){
                         float tx=suv.x*256.;
                         int ix=min(int(tx),255);
-                        float hx=texelFetch(samplerWarpX,ivec2(ix,0),0).r;
-                        if(hx>0.) wuv.x=mix((ix==0)?0.:texelFetch(samplerWarpX,ivec2(ix-1,0),0).r,hx,tx-float(ix));
+                        float hx=texelFetch(samplerWarpXY,ivec2(ix,0),0).r;
+                        if(hx>0.) wuv.x=mix((ix==0)?0.:texelFetch(samplerWarpXY,ivec2(ix-1,0),0).r,hx,tx-float(ix));
                     }
                     if(suv.y>0.&&suv.y<1.){
                         float ty=suv.y*256.;
                         int iy=min(int(ty),255);
-                        float hy=texelFetch(samplerWarpY,ivec2(iy,0),0).r;
-                        if(hy>0.) wuv.y=mix((iy==0)?0.:texelFetch(samplerWarpY,ivec2(iy-1,0),0).r,hy,ty-float(iy));
+                        float hy=texelFetch(samplerWarpXY,ivec2(iy,1),0).r;
+                        if(hy>0.) wuv.y=mix((iy==0)?0.:texelFetch(samplerWarpXY,ivec2(iy-1,1),0).r,hy,ty-float(iy));
                     }
 
                     float vis=1.;

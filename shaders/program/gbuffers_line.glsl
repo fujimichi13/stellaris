@@ -7,7 +7,7 @@
 
     out vec4 glcolor;
 
-    const float LINE_WIDTH=2.;
+    const float LINE_WIDTH=5.;
 
     void main(){
         glcolor=gl_Color;
@@ -36,7 +36,7 @@
     layout(location=0) out vec4 color;
 
     void main(){
-        color=glcolor;
+        color=vec4(1.,1.,1.,1.);
     }
 
 #endif

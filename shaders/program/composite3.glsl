@@ -106,7 +106,7 @@
 
         ivec2 px=ivec2(gl_FragCoord.xy);
         float depth=texelFetch(depthtex0,px,0).r;
-        if(depth>=1.) return;
+        if(depth>=1.||depth<.56) return;
 
         state=pcg(uint(px.x)+pcg(uint(px.y)+pcg(uint(frameCounter)+7u)));
 
@@ -119,30 +119,35 @@
 
         vec3 N;
         vec3 Rr;
+        float skyLm;
 
         if(abs(wn.w)<.5&&dot(nd.xyz,nd.xyz)>=.25){
             N=normalize(nd.xyz);
             Material m=decodeLabPBR(texelFetch(colortex2,px,0),vec3(0.));
-            if(m.roughness>=.4) return;
+            if(m.roughness>=.6) return;
+
+            skyLm=texelFetch(colortex4,px,0).g;
 
             vec3 Rm=reflect(-V,N);
-            vec2 bn=bluenoise(gl_FragCoord.xy);
-            float a=m.roughness*m.roughness;
-            float ph=bn.x*6.2831853;
-            float cz=bn.y*2.-1.;
-            vec3 j=vec3(sqrt(1.-cz*cz)*vec2(cos(ph),sin(ph)),cz);
-            Rr=normalize(Rm+j*a*2.);
-            if(dot(Rr,N)<.02) Rr=Rm;
+            float alpha=m.roughness*m.roughness;
+            vec3 Hm=sampleGGXVNDF(V,N,alpha,bluenoise(gl_FragCoord.xy));
+            Rr=reflect(-V,Hm);
+            if(dot(Rr,N)<=.01) Rr=Rm;
         }else if(wn.w>.5&&isEyeInWater==0){
             N=normalize(wn.xyz);
             Rr=reflect(-V,N);
             Rr.y=abs(Rr.y);
+            skyLm=texelFetch(colortex14,px,0).a;
         }else if(wn.w<-.5){
             N=normalize(wn.xyz);
             Rr=reflect(-V,N);
+            skyLm=fract(-wn.w)/.99;
         }else{
             return;
         }
+
+        float skyGate=skyVisibility(saturate(skyLm));
+        float sunGate=smoothstep(.02,.35,skyLm);
 
         vec3 L=lightDirection();
         vec3 lightCol=lightColor(sunDirection());
@@ -152,7 +157,7 @@
         vec3 thr=vec3(1.);
         vec3 c=vec3(0.);
 
-        for(int b=0;b<6;b++){
+        for(int b=0;b<3;b++){
             hit h;
             vec4 hitAlb;
             uint hitId;
@@ -163,36 +168,49 @@
 
             if(!found){
                 if(b==0) return;
-                c+=thr*skyRadiance(rd)*mix(.05,1.,smoothstep(-.2,.05,rd.y));
+                float horizon=mix(.05,1.,smoothstep(-.2,.05,rd.y));
+                c+=thr*skyRadiance(rd)*horizon*skyGate;
                 break;
             }
 
             vec3 hn=h.normal;
             if(dot(hn,rd)>0.) hn=-hn;
-            vec3 hro=ro+rd*tHit+hn*.01;
+            float hoff=.01;
+            #ifdef VOXELIZE_PLAYER
+                if(hitId==20u) hoff=.03;
+            #endif
+            vec3 hro=ro+rd*tHit+hn*hoff;
 
             int ti=min(max(int(h.st.y*8.),0),7)*8+min(max(int(h.st.x*8.),0),7);
             uint tw=vxq.quads[h.quad].tx[(ti>>1)>>2][(ti>>1)&3];
             tw=(tw>>uint(16*(ti&1)))&0xFFFFu;
             vec3 hitCol=pow(vec3(float(tw>>11),float((tw>>5)&63u),float(tw&31u))/vec3(31.,63.,31.),vec3(2.2));
+            #ifdef VOXELIZE_PLAYER
+                if(hitId==20u) hitCol=pow(playerSkin(h.uv).rgb,vec3(2.2));
+            #endif
 
             vec3 inc=vec3(0.);
 
             if(dot(hn,L)>0.){
                 vec3 sd=conedir(L,rand2());
                 float ndl=dot(hn,sd);
-                if(ndl>0.) inc+=(ndl/PI)*lightCol*traceTrans(hro,sd,256.);
+                if(ndl>0.) inc+=(ndl/PI)*lightCol*traceTrans(hro,sd,256.)*sunGate;
             }
 
-            if(b<3){
+            if(b<2){
                 vec3 sd=cosinedir(hn,rand2());
                 if(!traceAny(hro,sd,96.))
-                    inc+=skyRadiance(sd)*mix(.05,1.,smoothstep(-.2,.05,sd.y));
+                    inc+=skyRadiance(sd)*mix(.05,1.,smoothstep(-.2,.05,sd.y))*skyGate;
             }
 
             if(b<2) inc+=getblocklight(hro,hn);
 
-            float F=.9+.1*pow5(1.-max(dot(-rd,hn),0.));
+            #ifdef VOXELIZE_PLAYER
+             if(hitId==20u)
+                inc += skyRadiance(normalize(hn+vec3(0.,1.,0.)))*(.5+.5*hn.y)*.35*skyGate;
+            #endif
+
+            float F=.04+.96*pow5(1.-max(dot(-rd,hn),0.));
 
             c+=thr*((1.-F)*hitCol*inc);
             if(hitId >= 10u&&hitId<=13u) c+=thr*hitCol*16.;
@@ -200,10 +218,10 @@
             thr*=F;
             rd=reflect(rd,hn);
             ro=hro;
-            if(max(thr.r,max(thr.g,thr.b))<.02) break;
+            if(max(thr.r,max(thr.g,thr.b))<.03) break;
         }
 
-        if(any(isnan(c))) return;
+        if(any(isnan(c))||any(isinf(c))) return;
 
         float lum=dot(c,vec3(.2126,.7152,.0722));
         if(lum>64.) c*=64./lum;

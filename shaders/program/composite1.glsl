@@ -128,43 +128,43 @@
     }
 
     vec3 radiance(vec3 P,vec3 N,float skyF,vec3 L,vec3 lightCol,vec2 firstNoise){
-        vec3 rd=vec3(0.);
+        vec3 acc=vec3(0.);
         vec3 thr=vec3(1.);
         vec3 ro0=P+N*max(.02,.004*length(P));
         vec3 n=N;
 
-        rd += getblocklight(ro0,N);
+        acc += getblocklight(ro0,N);
 
         for(int b=0; b<max(PT_BOUNCES,PT_BOUNCES); b++){
-            vec3 rd=cosinedir(n,(b==0)?firstNoise:rand2());
+            vec3 wi=cosinedir(n,(b==0)?firstNoise:rand2());
 
             hit h;
             vec4 alb;
             uint bid;
             float tHit;
             vec3 tint;
-            bool found=closest(ro0,rd,96.,h,alb,bid,tHit,tint);
+            bool found=closest(ro0,wi,96.,h,alb,bid,tHit,tint);
             thr *= tint;
             if(!found){
                 if(b<PT_BOUNCES)
-                    rd += thr*skyF*skyRadiance(rd)*mix(.05,1.,smoothstep(-.2,.05,rd.y));
+                    acc += thr*skyF*skyRadiance(wi)*mix(.05,1.,smoothstep(-.2,.05,wi.y));
                 break;
             }
 
             vec3 hn=h.normal;
-            if(dot(hn,rd)>0.) hn=-hn;
-            vec3 hp=ro0+rd*tHit;
+            if(dot(hn,wi)>0.) hn=-hn;
+            vec3 hp=ro0+wi*tHit;
             vec3 a=pow(alb.rgb,vec3(2.2));
 
             if(bid >= 10u&&bid<=13u&&b>PT_BOUNCES)
-                rd += thr*ptEmitterRadiance(h.quad);
+                acc += thr*ptEmitterRadiance(h.quad);
 
-            if(b<PT_BOUNCES) rd += thr*a*getblocklight(hp+hn*.01,hn);
+            if(b<PT_BOUNCES) acc += thr*a*getblocklight(hp+hn*.01,hn);
 
             if(b<PT_BOUNCES&&dot(hn,L)>0.){
                 vec3 sd=conedir(L,rand2());
                 float ndl=dot(hn,sd);
-                if(ndl>0.) rd += thr*a*(ndl / PI)*lightCol*traceTrans(hp+hn*.01,sd,256.);
+                if(ndl>0.) acc += thr*a*(ndl / PI)*lightCol*traceTrans(hp+hn*.01,sd,256.);
             }
 
             thr *= a;
@@ -177,7 +177,7 @@
                 thr /= pr;
             }
         }
-        return rd;
+        return acc;
     }
 
     void main(){
@@ -193,7 +193,7 @@
 
         float depth=texelFetch(depthtex0,fp,0).r;
         if(abs(texelFetch(colortex13,fp,0).w)>.5) depth=texelFetch(depthtex1,fp,0).r;
-        if(depth>=1.) return;
+        if(depth>=1.||depth<.56) return;
 
         vec4 nd=texelFetch(colortex3,fp,0);
         if(dot(nd.xyz,nd.xyz)<.25) return;

@@ -20,28 +20,31 @@
     layout(local_size_x=1024) in;
     const ivec3 workGroups=ivec3(1,1,1);
 
-    shared uint sSum[1024];
+    shared uint sSum[2][1024];
 
     void main(){
         uint t=gl_LocalInvocationID.x;
-        uint base=t*uint((262144 / 1024));
+        const uint PER=uint(262144 / 1024);
+        uint base=t*PER;
 
         uint local=0u;
-        for(uint k=0u; k<uint((262144 / 1024)); k++) local += vxh.bucketCount[base+k];
-        sSum[t]=local;
+        for(uint k=0u; k<PER; k++) local += vxh.bucketCount[base+k];
+
+        sSum[0][t]=local;
         memoryBarrierShared();
         barrier();
 
+        int src=0;
         for(uint off=1u; off<1024u; off <<= 1){
-            uint add=(t >= off)?sSum[t-off]:0u;
-            barrier();
-            sSum[t] += add;
+            int dst=1-src;
+            sSum[dst][t]=sSum[src][t]+((t >= off)?sSum[src][t-off]:0u);
             memoryBarrierShared();
             barrier();
+            src=dst;
         }
 
-        uint run=sSum[t]-local;
-        for(uint k=0u; k<uint((262144 / 1024)); k++){
+        uint run=sSum[src][t]-local;
+        for(uint k=0u; k<PER; k++){
             vxh.bucketCursor[base+k]=run;
             run += vxh.bucketCount[base+k];
         }

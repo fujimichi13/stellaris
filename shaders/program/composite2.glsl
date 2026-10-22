@@ -30,14 +30,18 @@
         return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
     }
 
-    const float K3[3]=float[3](.25,.5,.25);
-
     layout(rgba16f) uniform image2D AtrA;
     layout(rgba16f) uniform image2D GeoCurrent;
 
     vec3 worldSpacePosition(vec2 uv,float depth){
         vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
         return (gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz;
+    }
+
+    vec3 halfRay(ivec2 q,ivec2 jit){
+        vec2 uv=(vec2(q*2+jit)+.5)/RRES;
+        vec4 r=gbufferProjectionInverse*vec4(uv*2.-1.,1.,1.);
+        return normalize(mat3(gbufferModelViewInverse)*normalize(r.xyz/r.w));
     }
 
     vec3 waterExtinction(vec3 tint){
@@ -79,46 +83,61 @@
 
         vec3 gi=vec3(0.);
 
-        if(!skyPx){
-            ivec2 fullRes=ivec2(RRES);
-            ivec2 hres=fullRes>>1;
-            ivec2 hp=px>>1;
+        if(!skyPx&&depth0>=.56){
+            ivec2 hres=ivec2(RRES)>>1;
+            ivec2 jit=ivec2(frameCounter&1,(frameCounter>>1)&1);
 
             float depth=texelFetch(depthtex0,px,0).r;
             if(abs(wn.w)>.5) depth=texelFetch(depthtex1,px,0).r;
-            vec4 v=gbufferProjectionInverse*vec4(texcoord*2.-1.,depth*2.-1.,1.);
-            float d0=length((gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz);
-            vec3 n0=normalize(texelFetch(colortex3,px,0).xyz);
+            vec3 P0=worldSpacePosition(texcoord,depth);
+            float d0=length(P0);
+            vec3 n0=texelFetch(colortex3,px,0).xyz;
+            n0*=inversesqrt(max(dot(n0,n0),1e-8));
 
-            vec4 h0=imageLoad(AtrA,hp);
-            int s=1;
-            
+            vec2 pos=(vec2(px)+.5)*.5-.5;
+            ivec2 bq=ivec2(floor(pos+.5));
+            float tolU=1.25*(d0*4./(gbufferProjection[1][1]*RRES.y))+.002*d0+.01;
+
             vec3 sum=vec3(0.);
             float wsum=0.;
+            vec3 bestCol=vec3(0.);
+            float bestScore=1e30;
 
             for(int y=-1;y<=1;y++){
                 for(int x=-1;x<=1;x++){
-                    ivec2 q=hp+ivec2(x,y)*s;
+                    ivec2 q=bq+ivec2(x,y);
                     if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,hres))) continue;
 
-                    float dq=imageLoad(GeoCurrent,q).a;
-                    if(dq<=0.) continue;
+                    vec4 gq=imageLoad(GeoCurrent,q);
+                    if(gq.a<=0.) continue;
 
-                    vec3 gq=imageLoad(AtrA,q).rgb;
-                    if(any(isnan(gq))) continue;
+                    vec3 gcol=imageLoad(AtrA,q).rgb;
+                    if(any(isnan(gcol))||any(isinf(gcol))) continue;
 
-                    vec3 nq=normalize(texelFetch(colortex3,min(q*2,fullRes-1),0).xyz);
+                    vec3 nq=gq.rgb*inversesqrt(max(dot(gq.rgb,gq.rgb),1e-8));
+                    vec3 vq=halfRay(q,jit)*gq.a;
 
-                    float w=K3[x+1]*K3[y+1];
-                    w*=pow(max(dot(n0,nq),0.),24.);
-                    w*=exp(-abs(dq-d0)/(.04*d0*float(s)+.05));
+                    float cn=max(dot(n0,nq),0.);
+                    vec3 nm=n0+nq;
+                    nm*=inversesqrt(max(dot(nm,nm),1e-8));
+                    float pr=abs(dot(nm,vq-P0))/tolU;
 
-                    sum+=gq*w;
+                    vec2 dd=vec2(q)-pos;
+                    float dd2=dot(dd,dd);
+
+                    float score=pr+(1.-cn)*8.+dd2*.25;
+                    if(score<bestScore){
+                        bestScore=score;
+                        bestCol=gcol;
+                    }
+
+                    float w=exp(-dd2*1.43)*pow(cn,24.)*exp(-1.5*pr*pr);
+                    sum+=gcol*w;
                     wsum+=w;
                 }
             }
 
-            gi=(wsum>1e-4)?sum/wsum:h0.rgb;
+            gi=(wsum>1e-4)?sum/wsum:bestCol;
             gi*=wgt.rgb;
         }
 
@@ -225,7 +244,7 @@
             float outdoors=skyLm*skyLm*skyLm*skyLm;
             vec3 scat=tint*alpha*outdoors*(sky*.8+lightCol*abs(dot(N,L))*.32);
 
-            vec3 transmit=mix(vec3(1.),tint,alpha);
+            vec3 transmit=mix(vec3(1.),tint/max(max(tint.r,max(tint.g,tint.b)),.25),clamp(alpha*1.5,0.,1.));
             hdr=under*transmit*(1.-F)+scat;
         }
 

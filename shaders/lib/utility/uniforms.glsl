@@ -41,8 +41,7 @@
     uniform sampler2D samplerCloudHistA;
     uniform sampler2D samplerCloudHistB;
     
-    uniform sampler2D samplerWarpX;
-    uniform sampler2D samplerWarpY;
+    uniform sampler2D samplerWarpXY;
 
     uniform float viewWidth;
     uniform float viewHeight;

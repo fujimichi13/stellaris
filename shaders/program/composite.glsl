@@ -32,8 +32,7 @@
     const bool shadowtex1Nearest=true;
     */
 
-    layout(r32ui) uniform uimage2D histX;
-    layout(r32ui) uniform uimage2D histY;
+    layout(r32ui) uniform uimage2D histXY;
 
     #ifdef VOLUMETRIC_CLOUDS
         layout(rgba32f) uniform image2D cloudHistA;
@@ -162,7 +161,7 @@
     const int shadowMapResolution=2048;
     const float shadowDistance=192.0;
 
-    float rtwsmWarp1D(sampler2D tex,float u,out float slope){
+    float rtwsmWarp1D(sampler2D tex,float u,int row,out float slope){
         slope=1.;
         if(u<=0.||u>=1.) return u;
 
@@ -170,10 +169,10 @@
         int i=min(int(t),256-1);
         float f=t-float(i);
 
-        float hi=texelFetch(tex,ivec2(i,0),0).r;
+        float hi=texelFetch(tex,ivec2(i,row),0).r;
         if(hi<=0.) return u;
 
-        float lo=(i==0)?0.:texelFetch(tex,ivec2(i-1,0),0).r;
+        float lo=(i==0)?0.:texelFetch(tex,ivec2(i-1,row),0).r;
 
         slope=max((hi-lo)*float(256),1e-3);
         return mix(lo,hi,f);
@@ -182,8 +181,8 @@
     vec2 rtwsmWarp(vec2 clipXY,out vec2 slope){
         vec2 uv=clipXY*.5+.5;
         vec2 w;
-        w.x=rtwsmWarp1D(samplerWarpX,uv.x,slope.x);
-        w.y=rtwsmWarp1D(samplerWarpY,uv.y,slope.y);
+        w.x=rtwsmWarp1D(samplerWarpXY,uv.x,0,slope.x);
+        w.y=rtwsmWarp1D(samplerWarpXY,uv.y,1,slope.y);
         return w*2.-1.;
     }
 
@@ -285,11 +284,17 @@
         return mix(vec3(1.),vis,fade);
     }
 
+    #ifndef MC_HAND_DEPTH
+        #define MC_HAND_DEPTH 0.125
+    #endif
+
     void main(){
         ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 albedo=texelFetch(colortex0,px,0);
         float depth=texelFetch(depthtex0,px,0).r;
         if(abs(texelFetch(colortex13,px,0).w)>.5) depth=texelFetch(depthtex1,px,0).r;
+        bool isHand=depth<.56;
+        if(isHand) depth=((depth*2.-1.)/MC_HAND_DEPTH)*.5+.5;
 
         color=albedo;
         color1=vec4(0.,0.,0.,1.);
@@ -369,14 +374,15 @@
 
         vec4 shadowClip=toShadowClip(worldPos);
         vec2 suv=shadowClip.xy*.5+.5;
-        if(((px.x&3)|(px.y&3))==0&&suv.x>=0.&&suv.x<=1.&&suv.y>=0.&&suv.y<=1.){
+        if(!isHand&&((px.x&3)|(px.y&3))==0&&suv.x>=0.&&suv.x<=1.&&suv.y>=0.&&suv.y<=1.){
             int binX=clamp(int(suv.x*float(256)),0,256-1);
             int binY=clamp(int(suv.y*float(256)),0,256-1);
-            imageAtomicAdd(histX,ivec2(binX,0),1u);
-            imageAtomicAdd(histY,ivec2(binY,0),1u);
+            imageAtomicAdd(histXY,ivec2(binX,0),1u);
+            imageAtomicAdd(histXY,ivec2(binY,1),1u);
         }
 
-        vec3 visC=sampleShadow(worldPos,ng,NdotLg);
+        vec3 visC=vec3(smoothstep(.3,.9,texelFetch(colortex4,px,0).g));
+        if(!isHand) visC=sampleShadow(worldPos,ng,NdotLg);
 
         vec4 nd=texelFetch(colortex3,px,0);
         if(dot(nd.xyz,nd.xyz)<.25){

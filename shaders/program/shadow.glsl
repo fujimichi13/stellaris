@@ -47,26 +47,25 @@
     out vec4 glcolor1;
     out vec2 texcoord1;
 
-    uniform sampler2D samplerWarpX;
-    uniform sampler2D samplerWarpY;
+    uniform sampler2D samplerWarpXY;
     uniform sampler2D tex;
     uniform vec3 cameraPosition;
     uniform int entityId;
 
-    float rtwsmWarp1D(sampler2D tex,float u){
+    float rtwsmWarp1D(sampler2D tex,float u,int row){
         if(u<=0.||u>=1.) return u;
         float t=u*float(256);
         int i=min(int(t),256-1);
         float f=t-float(i);
-        float hi=texelFetch(tex,ivec2(i,0),0).r;
+        float hi=texelFetch(tex,ivec2(i,row),0).r;
         if(hi<=0.) return u;
-        float lo=(i==0)?0.:texelFetch(tex,ivec2(i-1,0),0).r;
+        float lo=(i==0)?0.:texelFetch(tex,ivec2(i-1,row),0).r;
         return mix(lo,hi,f);
     }
 
     vec2 rtwsmWarp(vec2 clipXY){
         vec2 uv=clipXY*.5+.5;
-        vec2 w=vec2(rtwsmWarp1D(samplerWarpX,uv.x),rtwsmWarp1D(samplerWarpY,uv.y));
+        vec2 w=vec2(rtwsmWarp1D(samplerWarpXY,uv.x,0),rtwsmWarp1D(samplerWarpXY,uv.y,1));
         return w*2.-1.;
     }
 
@@ -102,24 +101,6 @@
             vec3 bmin=min(min(a,b),min(c,d));
             vec3 bmax=max(max(a,b),max(c,d));
 
-            #ifdef PLAYER_CULL
-            {
-                const vec3 boxMin=vec3(-.75,-2.1,-.75);
-                const vec3 boxMax=vec3( .75, .55, .75);
-                bool inBox=!(any(lessThan(bmin,boxMin)) || any(greaterThan(bmax,boxMax)));
-                if(inBox){
-                    if(entityId==1) break;
-
-                    vec3 g0=(a+cameraPosition)*16.;
-                    vec3 g1=(b+cameraPosition)*16.;
-                    vec3 g2=(c+cameraPosition)*16.;
-                    vec3 g3=(d+cameraPosition)*16.;
-                    vec3 off=max(max(abs(g0-round(g0)),abs(g1-round(g1))),max(abs(g2-round(g2)),abs(g3-round(g3))));
-                    if(max(off.x,max(off.y,off.z))>.08) break;
-                }
-            }
-            #endif
-
             uint idx=atomicAdd(vxh.quadCount,1u);
             if(idx >= uint(MAX_QUADS)){
                 atomicAdd(vxh.overflow,1u);
@@ -128,13 +109,33 @@
 
             vec4 tint=(glcolor[0]+glcolor[1]+glcolor[2]) / 3.;
 
+            uint bidOut=uint(max(vxBlockId[0],0.));
+            #ifdef VOXELIZE_PLAYER
+                if(entityId==1){
+                    ivec2 skinSize=textureSize(tex,0);
+                    if(skinSize.x==64&&skinSize.y==64){
+                        bidOut=20u;
+                        vec2 umin=min(min(uv0,uv1),min(uv2,uv3));
+                        vec2 umax=max(max(uv0,uv1),max(uv2,uv3));
+                        ivec2 t0=ivec2(floor(umin*float(64)+.01));
+                        ivec2 t1=ivec2(ceil(umax*float(64)-.01));
+                        t1=min(t1,t0+ivec2(64 / 4));
+                        for(int y=t0.y; y<t1.y; y++)
+                        for(int x=t0.x; x<t1.x; x++){
+                            if(x<0||y<0||x >= 64||y >= 64) continue;
+                            vxp.texels[y*64+x]=packUnorm4x8(texelFetch(tex,ivec2(x,y),0));
+                        }
+                    }
+                }
+            #endif
+
             vec2 uvc=rect?(uv0+uv2)*.5:(uv0+uv1+uv2) / 3.;
             vec4 ts=textureLod(tex,uvc,2.);
             vec4 albedo=vec4(ts.rgb*tint.rgb,ts.a*tint.a);
 
             storeQD q;
             q.p0=vec4(a,uintBitsToFloat(packUnorm4x8(tint)));
-            q.p1=vec4(b,uintBitsToFloat(uint(max(vxBlockId[0],0.))));
+            q.p1=vec4(b,uintBitsToFloat(bidOut));
             q.p2=vec4(c,uintBitsToFloat(packUnorm4x8(albedo)));
             q.p3=vec4(d,0.);
             q.uv01=vec4(uv0,uv1);

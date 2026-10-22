@@ -1,6 +1,11 @@
 #ifndef SETTINGS_GLSL
     #define SETTINGS_GLSL a
 
+    #ifdef BLOOM
+    #endif
+    #ifdef TAA_ENABLED
+    #endif
+
     #define COLORED_SHADOW
 
     #define PT_BOUNCES 2 // [1 2 3 4]
@@ -60,7 +65,9 @@
     #define VL_STEPS 12 // [8 12 16 24 32]
     #define VL_DENSITY 1.0 // [0.25 0.5 0.75 1.0 1.5 2.0 3.0 4.0]
 
-    #define PLAYER_CULL
+    #define VOXELIZE_PLAYER
     #define MAX_QUADS 262144 // [65536 131072 262144 524288]
 
+    #define INFO ST //[ST LS]
+    
 #endif

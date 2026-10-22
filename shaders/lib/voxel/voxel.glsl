@@ -97,12 +97,27 @@
         node nodes[];
     } vxn;
 
+
+    layout(std430,binding=5) buffer playerSkinB {
+        uint texels[64*64];
+    } vxp;
+
     layout(std430,binding=3) buffer auxB {
         uint sortedKeys[MAX_QUADS];
         uint sortedIds[MAX_QUADS];
         uint flags[MAX_QUADS];
         uint parent[2*MAX_QUADS];
     } vxa;
+
+    vec4 playerSkin(vec2 uv){
+        ivec2 t=clamp(ivec2(floor(uv*float(64))),ivec2(0),ivec2(64-1));
+        return unpackUnorm4x8(vxp.texels[t.y*64+t.x]);
+    }
+
+    vec2 quadUV(in storeQD q,int tri,vec2 bc){
+        if(tri==0) return q.uv01.xy*(1.-bc.x-bc.y)+q.uv01.zw*bc.x+q.uv23.xy*bc.y;
+        return q.uv01.xy*(1.-bc.x-bc.y)+q.uv23.xy*bc.x+q.uv23.zw*bc.y;
+    }
 
     ivec3 cellCoord(vec3 p){
         return ivec3(floor(p / 8.))+ivec3(16,8,16);
@@ -257,15 +272,20 @@
     bool storeQDOccludes(uint id,vec3 ro,vec3 rd,float tMax){
         storeQD q=vxq.quads[id];
         vec2 bc;
+        int tri=0;
         float t=vtri(q.p0.xyz,q.p1.xyz,q.p2.xyz,ro,rd,bc);
         bool h=(t>1e-4&&t<tMax);
         if(!h){
             t=vtri(q.p0.xyz,q.p2.xyz,q.p3.xyz,ro,rd,bc);
             h=(t>1e-4&&t<tMax);
+            tri=1;
         }
         if(!h) return false;
         uint bid=floatBitsToUint(q.p1.w);
         if(bid >= 1u&&bid<=3u) return false;
+        #ifdef VOXELIZE_PLAYER
+        if(bid==20u) return playerSkin(quadUV(q,tri,bc)).a>.5;
+        #endif
         return unpackUnorm4x8(floatBitsToUint(q.p2.w)).a>0.5;
     }
 
@@ -316,14 +336,19 @@
     bool storeQDTransmit(uint id,vec3 ro,vec3 rd,float tMax,inout vec3 T){
         storeQD q=vxq.quads[id];
         vec2 bc;
+        int tri=0;
         float t=vtri(q.p0.xyz,q.p1.xyz,q.p2.xyz,ro,rd,bc);
         bool h=(t>1e-4&&t<tMax);
         if(!h){
             t=vtri(q.p0.xyz,q.p2.xyz,q.p3.xyz,ro,rd,bc);
             h=(t>1e-4&&t<tMax);
+            tri=1;
         }
         if(!h) return true;
         uint bid=floatBitsToUint(q.p1.w);
+        #ifdef VOXELIZE_PLAYER
+        if(bid==20u) return playerSkin(quadUV(q,tri,bc)).a<=.5;
+        #endif
         vec4 a=unpackUnorm4x8(floatBitsToUint(q.p2.w));
         if(bid==1u) return true;
         if(bid==2u || bid==3u){
@@ -383,6 +408,12 @@
             bid=floatBitsToUint(q.p1.w);
             alb=unpackUnorm4x8(floatBitsToUint(q.p2.w));
             bool skip=(bid >= 1u&&bid<=3u) || (rand()>alb.a);
+            #ifdef VOXELIZE_PLAYER
+                if(bid==20u){
+                    alb=playerSkin(h.uv);
+                    skip=alb.a<.5;
+                }
+            #endif
             if(!skip){
                 tHit += h.t;
                 return true;

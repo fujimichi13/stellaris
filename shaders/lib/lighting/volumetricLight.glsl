@@ -3,16 +3,16 @@
 
     #include "/lib/utility/math.glsl"
 
-    float rtwsmWarp1Dvec2(sampler2D lut,float u)
+    float rtwsmWarp1Dvec2(sampler2D lut,float u,int row)
     {
         if (u<=0||u>= 1.) return u;
 
         float t=u*256.;
         int i=min(int(t),255);
-        float hi=texelFetch(lut,ivec2(i,0),0).r;
+        float hi=texelFetch(lut,ivec2(i,row),0).r;
         if (hi<=0.) return u;
 
-        float lo=(i==0)?0.:texelFetch(lut,ivec2(i-1,0),0).r;
+        float lo=(i==0)?0.:texelFetch(lut,ivec2(i-1,row),0).r;
         return mix(lo,hi,t-float(i));
     }
 
@@ -21,7 +21,7 @@
         vec4 sc=shadowProjection*(shadowModelView*vec4(p,1.));
         vec3 ndc=sc.xyz/sc.w;
 
-        vec2 uv=vec2(rtwsmWarp1Dvec2(samplerWarpX,ndc.x*.5+.5),rtwsmWarp1Dvec2(samplerWarpY,ndc.y*.5+.5));
+        vec2 uv=vec2(rtwsmWarp1Dvec2(samplerWarpXY,ndc.x*.5+.5,0),rtwsmWarp1Dvec2(samplerWarpXY,ndc.y*.5+.5,1));
         float sz=ndc.z*.5+.5;
 
         if (any(lessThanEqual(uv,vec2(0.)))||any(greaterThanEqual(uv,vec2(1.)))||sz<=0.||sz>=1.)

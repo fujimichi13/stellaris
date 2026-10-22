@@ -87,11 +87,9 @@
             m.conductor=true;
             m.metallic=1.;
             m.F0=fresnelConductor(1.,m.eta,m.kappa);
-        }else if(g<255){
+        }else{
             m.metallic=1.;
             m.F0=albedo;
-        }else{
-            m.F0=vec3(0.);
         }
         m.diffuse=albedo*(1.-m.metallic);
 
@@ -188,6 +186,28 @@
         vec3 sa=(m.F0*ab.x+f90From(m.F0)*ab.y)*msComp(m.F0,ab);
         float so=specocc(NoV,m.ao,m.roughness);
         return m.diffuse*(1.-sa)*skyDiffuse*m.ao+sa*skyEnv*so;
+    }
+
+    vec3 sampleGGXVNDF(vec3 V,vec3 N,float alpha,vec2 u){
+        vec3 T,B;
+        basis(N,T,B);
+        vec3 Ve=vec3(dot(V,T),dot(V,B),dot(V,N));
+        vec3 Vh=normalize(vec3(alpha*Ve.x,alpha*Ve.y,max(Ve.z,1e-4)));
+
+        float lensq=Vh.x*Vh.x+Vh.y*Vh.y;
+        vec3 T1=(lensq>1e-7)?vec3(-Vh.y,Vh.x,0.)*inversesqrt(lensq):vec3(1.,0.,0.);
+        vec3 T2=cross(Vh,T1);
+
+        float r=sqrt(u.x);
+        float phi=TAU*u.y;
+        float t1=r*cos(phi);
+        float t2=r*sin(phi);
+        float s=.5*(1.+Vh.z);
+        t2=(1.-s)*sqrt(max(1.-t1*t1,0.))+s*t2;
+
+        vec3 Nh=t1*T1+t2*T2+sqrt(max(1.-t1*t1-t2*t2,0.))*Vh;
+        vec3 Ne=normalize(vec3(alpha*Nh.x,alpha*Nh.y,max(Nh.z,0.)));
+        return normalize(T*Ne.x+B*Ne.y+N*Ne.z);
     }
 
 #endif

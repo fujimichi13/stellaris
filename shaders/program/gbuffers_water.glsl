@@ -6,11 +6,14 @@
 #ifdef vsh
 
     in vec4 mc_Entity;
+    in vec4 at_tangent;
 
     out vec4 glcolor;
     out vec2 texcoord;
     out vec2 vlightmap;
     out vec3 vNormal;
+    out vec3 vTangent;
+    out vec3 vBitangent;
     out vec3 vWorldPos;
     out float iswater;
     out float isglass;
@@ -24,6 +27,9 @@
         isglass=(abs(mc_Entity.x-3.)<.5)?1.:((abs(mc_Entity.x-2.)<.5)?2.:3.);
 
         vNormal=normalize(mat3(gbufferModelViewInverse)*(gl_NormalMatrix*gl_Normal));
+        vec3 T=normalize(mat3(gbufferModelViewInverse)*(gl_NormalMatrix*at_tangent.xyz));
+        vTangent=T;
+        vBitangent=normalize(cross(T,vNormal)*at_tangent.w);
 
         vec4 viewPos=gl_ModelViewMatrix*gl_Vertex;
         vWorldPos=(gbufferModelViewInverse*viewPos).xyz;
@@ -47,6 +53,8 @@
     in vec2 texcoord;
     in vec2 vlightmap;
     in vec3 vNormal;
+    in vec3 vTangent;
+    in vec3 vBitangent;
     in vec3 vWorldPos;
     in float iswater;
     in float isglass;
@@ -62,7 +70,8 @@
         if(iswater<.5){
             if(albedo.a<.05) discard;
 
-            vec3 Ng0=normalize(vNormal);
+            float nao;
+            vec3 Ng0=decodeLabPBRNormal(texture(normals,texcoord,log2(RS)),mat3(normalize(vTangent),normalize(vBitangent),normalize(vNormal)),nao);
             if(dot(Ng0,-vWorldPos)<0.) Ng0=-Ng0;
 
             color=vec4(Ng0,-(floor(isglass+.5)+lm.y*.99));
