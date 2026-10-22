@@ -1,5 +1,5 @@
 option.INFO=Stellaris
-value.INFO= by Fujimichi
-value.INFO= 102326
+value.INFO.ST= by Fujimichi
+value.INFO.LS= 102326
 
 option.VOXELIZE_PLAYER= Voxelization Player
