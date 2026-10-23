@@ -1,3 +1,4 @@
 #version 430 compatibility
-#define PROGRAM_BLOOM_DOWN4
-#include "/lib/camera/bloom.glsl"
+#define POST_PASS
+#define iters 5
+#include "/lib/camera/svgf.glsl"

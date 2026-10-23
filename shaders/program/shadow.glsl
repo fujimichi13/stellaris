@@ -165,13 +165,17 @@
                     int cell=lightCell(cellCoord(center));
                     if(cell >= 0){
                         vec3 lc;
-                        if(lightId==11u)      lc=vec3(.25,.6,1.);
-                        else if(lightId==12u) lc=vec3(1.,.12,.05);
-                        else if(lightId==13u) lc=vec3(1.,.55,.2);
-                        else {
+                        if(lightId==11u)
+                            lc=vec3(.25,.6,1.);
+                        else if(lightId==12u)
+                            lc=vec3(1.,.12,.05);
+                        else if(lightId==13u)
+                            lc=vec3(1.,.55,.2);
+                        else
+                        {
                             vec3 g=pow(max(albedo.rgb,vec3(1e-3)),vec3(2.2));
                             g /= max(max(g.r,g.g),max(g.b,1e-3));
-                            lc=clamp(mix(vec3(dot(g,vec3(.2126,.7152,.0722))),g,1.6),0.,1.);
+                            lc=clamp(mix(vec3(luminance(g)),g,1.6),0.,1.);
                         }
                         vLight lt;
                         lt.a =vec4(b,uintBitsToFloat(packUnorm4x8(vec4(lc,1.))));

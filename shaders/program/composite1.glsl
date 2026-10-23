@@ -48,7 +48,7 @@
         else{
             vec3 g=pow(max(unpackUnorm4x8(floatBitsToUint(q.p2.w)).rgb,vec3(1e-3)),vec3(2.2));
             g /= max(max(g.r,g.g),max(g.b,1e-3));
-            col=clamp(mix(vec3(dot(g,vec3(.2126,.7152,.0722))),g,1.6),0.,1.);
+            col=clamp(mix(vec3(luminance(g)),g,1.6),0.,1.);
         }
         return col*(20. / area);
     }

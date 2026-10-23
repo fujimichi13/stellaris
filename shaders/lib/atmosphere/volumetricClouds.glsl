@@ -91,13 +91,14 @@
         return max(body,anvil);
     }
 
-    float ctg(float type,float h){
+    float ctg(float type,float h,float cv){
         float wS=1.-saturate(type*2.);
         float wCb=saturate((type-.5)*2.);
         float wCu=1.-wS-wCb;
 
         float stratus=smoothstep(0.,.08,h)*(1.-smoothstep(.12,.3,h));
-        float cu=smoothstep(0.,.01,h)*(1.-smoothstep(.5,.85,h));
+        float hh=h/mix(.3,1.15,saturate(cv));
+        float cu=smoothstep(0.,.03,h)*(1.-smoothstep(.5,.95,hh));
 
         float base=stratus*wS+cu*wCu+gC(h)*wCb;
         float nimbus=smoothstep(0.,.05,h)*(1.-smoothstep(.6,.95,h));
@@ -105,17 +106,27 @@
     }
 
     vec2 cloudCoverageMap(vec3 wp){
+        float S=max(CLOUD_SCALE,1e-4);
         float t=frameTimeCounter*CLOUD_SPEED*.1;
-        vec3 p=wp*.000035/max(CLOUD_SCALE,1e-4);
+        float dXZ=length(wp.xz-cameraPosition.xz)/S;
+
+        vec3 p=wp*.00003/S;
         p.xz-=vec2(t,-t*.35);
 
-        float weather=get2DNoise(p)*.6+get2DNoise(p*2.3+11.)*.4;
-        float coverage=saturate(pow(max(weather,0.),1.3)*1.6-.15);
+        float macro=get2DNoise(p)*.6+get2DNoise(p*2.1+5.)*.4;
+        float cellN=get2DNoise(p*12.+11.)*.6+get2DNoise(p*26.+23.)*.4;
 
-        vec3 tp=wp*.000018/max(CLOUD_SCALE,1e-4)+31.7;
+        float nearW=1.-smoothstep(1500.,22000.,dXZ);
+        float farW=smoothstep(25000.,80000.,dXZ);
+
+        float regional=smoothstep(.3,.7,macro);
+        float thr=mix(.6,.52,regional)-nearW*.04+farW*.06;
+        float coverage=smoothstep(thr-.04,thr+.25,cellN);
+
+        vec3 tp=wp*.000018/S+31.7;
         tp.xz-=vec2(t*.4,t*.15);
         float type=saturate(get2DNoise(tp)*.5+get2DNoise(tp*1.7+5.)*.5);
-        type=mix(type*.6,type,coverage);
+        type=saturate(.5+(type-.5)*.2+max(coverage-.7,0.)*.4);
 
         float r=saturate(cloudRain);
         coverage=mix(coverage,saturate(coverage*.4+.7),r);
@@ -133,15 +144,16 @@
         float nh=saturate((gh-(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))))/maxT);
 
         vec2 weather=cloudCoverageMap(wp);
+        if(weather.x<.03) return vec2(0.);
         float cov=mix(CLOUD_COVERAGE*.6,CLOUD_COVERAGE*1.4,weather.x)*(1.+.35*saturate(cloudRain));
         float type=weather.y;
 
-        float ha=ctg(type,nh);
+        float ha=ctg(type,nh,weather.x);
         if(ha<.0005) return vec2(0.);
 
         wp+=vec3(1.,0.,.3)*nh*400.*max(CLOUD_SCALE,1e-4);
 
-        vec3 p=wp*.00045/max(CLOUD_SCALE,1e-4);
+        vec3 p=wp*vec3(.0004,.0002,.0004)/max(CLOUD_SCALE,1e-4);
         p.xy-=vec2(t,-t*.5);
 
         if(!lite){
@@ -152,7 +164,7 @@
         float N=mix(.3,.55,type);
         float G=1.2;
 
-        float base=get2DNoise(p);
+        float base=mix(get2DNoise(p),get3DNoise(p*1.3),.7);
         float noise=lite?base*.9:mix(base,base*STRNoise(vec3(p.xy,nh*4.)),.5)*.9;
 
         int oct=lite?3:3+co;
@@ -179,7 +191,9 @@
         float x=(noise-(1.-cov))*mix(1.6,.9,saturate(noise*2.));
         float tw=mix(.22,1.15,erosion);
 
-        return vec2(smoothstep(-tw,tw,x*20.),smoothstep(-tw,tw,x*2.))*ha*ha*CLOUD_DENSITY*(1.+1.5*saturate(cloudRain));
+        float nearBoost=1.+.6*(1.-smoothstep(2000.,25000.,length(wp.xz-cameraPosition.xz)/max(CLOUD_SCALE,1e-4)));
+
+        return vec2(smoothstep(-tw,tw,x*20.),smoothstep(-tw,tw,x*2.))*ha*ha*CLOUD_DENSITY*(1.+1.5*saturate(cloudRain))*nearBoost;
     }
 
     bool cloudEmpty(vec3 wp){
@@ -187,7 +201,8 @@
         float gh=curvedHeight(wp,cameraPosition.xz,cloudPR());
         if(gh<(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))||gh>(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+maxT) return true;
         float nh=saturate((gh-(CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain))))/maxT);
-        return ctg(cloudCoverageMap(wp).y,nh)<.0005;
+        vec2 cm=cloudCoverageMap(wp);
+        return cm.x<.03||ctg(cm.y,nh,cm.x)<.0005;
     }
 
     float calcDetail(vec3 wd,float dist){

@@ -1,3 +1,4 @@
 #version 430 compatibility
-#define PROGRAM_BLOOM_PREFILTER
-#include "/lib/camera/bloom.glsl"
+#define SPATIAL_PASS
+#define iters 2
+#include "/lib/camera/svgf.glsl"

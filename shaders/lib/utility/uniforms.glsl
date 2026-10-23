@@ -85,8 +85,8 @@
     }
 
     vec4 taaClip(vec4 p){
+        p.xy+=taaJitter*p.w;
         #ifdef TAAU_ENABLED
-            p.xy+=taaJitter*p.w;
             p.xy=p.xy*RS+p.w*(RS-1.);
         #endif
         return p;

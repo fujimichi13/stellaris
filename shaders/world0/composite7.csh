@@ -1,3 +1,4 @@
 #version 430 compatibility
-#define PROGRAM_BLOOM_DOWN2
-#include "/lib/camera/bloom.glsl"
+#define SPATIAL_PASS
+#define iters 3
+#include "/lib/camera/svgf.glsl"

@@ -2,4 +2,113 @@ option.INFO=Stellaris
 value.INFO.ST= by Fujimichi
 value.INFO.LS= 102326
 
+option.VERSION=v0.1.1
+value.VERSION.ST=Alpha
+value.VERSION.LS=v011
+
+
+screen.Atmosphere=§l§bAtmosphere
+
+screen.Clouds=§l§fClouds Setting
+
+screen.VL=§fVolumetric Clouds Setting
+
+option.VOLUMETRIC_CLOUDS= Volumetric Clouds
+option.CLOUD_RAY_STEPS=Steps
+option.CLOUD_UPSCALING=Upscaling (this sucks for now.)
+value.CLOUD_UPSCALING.0=§cOff
+value.CLOUD_UPSCALING.2=§a2x
+value.CLOUD_UPSCALING.4=§b4x
+option.CLOUD_COVERAGE=Coverage
+option.CLOUD_DENSITY=Density
+option.CLOUD_ALTITUDE=Altitude
+option.CLOUD_THICKNESS=Thickness
+option.CLOUD_SCALE=Scale
+option.CLOUD_SUNLIGHTING=SunLight
+option.CLOUD_SKYLIGHTING=SkyLight
+
+option.SKYLIGHT_CURVE=SkyLight Curve
+
+screen.PT=§l§aPT Setting
+
+
 option.VOXELIZE_PLAYER= Voxelization Player
+
+
+option.PT_BOUNCES=PT Bounces
+value.PT_BOUNCES.1=§a1
+value.PT_BOUNCES.2=§62
+value.PT_BOUNCES.3=§c3
+value.PT_BOUNCES.4=§44
+
+
+option.PT_SAMPLES=PT Samples
+value.PT_SAMPLES.1=§a1
+value.PT_SAMPLES.2=§62
+value.PT_SAMPLES.3=§c3
+value.PT_SAMPLES.4=§44
+
+option.MAX_QUADS= Quads
+
+
+screen.Water=§l§3Water
+option.WAVE_SCALE=Wave Scale
+option.WAVE_SPEED=Wave Speed
+option.WAVE_HEIGHT=Wave Height
+option.WAVE_PARALLAX_STRENGTH=Wave Parallax Strength
+option.WAVE_OCTAVES=Wave Octaves
+
+
+screen.WFog=§bWater Fog Setting
+option.WATER_FOG_DENSITY=Fog Density
+option.WATER_FOG_SCATTERING=Fog Scattering
+
+
+
+screen.GTAO=§l§6Ao
+option.GTAO_ENABLED=GTAO
+option.GTAO_SLICE_COUNT=Slice Count
+option.GTAO_DIRECTION_SAMPLE_COUNT=Direction Sample Count
+option.GTAO_SEARCH_RADIUS=Search Radius
+option.GTAO_INTENSITY=Intensity
+
+
+screen.Surface=§l§aSurface
+
+
+screen.Puddle=Puddles Setting
+option.PUDDLES_ENABLED=Puddles
+option.PUDDLES_AMOUNT=Amount
+
+
+screen.VLi=§l§eVolumetric Light
+option.VOLUMETRIC_LIGHT=Volumetric Light
+option.VL_STEPS=Steps
+option.VL_DENSITY=Density
+
+
+
+screen.Post=§l§dPost-Processing
+
+screen.Bloom=§eBloom Setting
+option.BLOOM=Bloom
+option.BLOOM_STRENGTH=Strength
+
+
+screen.Taa=§cTemporal Anti-Aliasing Setting
+option.TAA_ENABLED=Temporal Anti-Aliasing
+option.TAA_BLENDWEIGHT=Taa Blendweight
+option.TAA_AGGRESSION=Aggression
+option.TAAU_ENABLED=Temporal Anti-Aliasing Upscaling
+option.TAAU_RENDER_SCALE=TAAU Render Resolution
+value.TAAU_RENDER_SCALE.0.50=50%
+value.TAAU_RENDER_SCALE.0.60=60%
+value.TAAU_RENDER_SCALE.0.67=67%
+value.TAAU_RENDER_SCALE.0.75=75%
+value.TAAU_RENDER_SCALE.0.85=85%
+value.TAAU_RENDER_SCALE.0.1.00=100%
+
+
+screen.Exposure=Exposure Setting
+option.EXPOSURE_MIN=Min
+option.EXPOSURE_MAX=Max
