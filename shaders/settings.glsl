@@ -1,6 +1,25 @@
 #ifndef SETTINGS_GLSL
     #define SETTINGS_GLSL a
 
+    /*
+    const int colortex0Format=RGBA16F;
+    const int colortex3Format=RGBA32UI;
+    const int colortex5Format=RGBA16F;
+    const int colortex7Format=RGBA16F;
+    const int colortex8Format=RGBA16F;
+    const int colortex12Format=RGBA16F;
+    const int colortex13Format=RGBA16F;
+    const int colortex15Format=RGBA16F;
+
+    const bool shadowtex0Nearest=true;
+    const bool shadowtex1Nearest=true;
+
+    const bool colortex5Clear=false;
+    const bool colortex15Clear=false;
+    
+    const float shadowDistanceRenderMul = 1.0;
+    */
+
     #define MAT_TERRAIN 0u
     #define MAT_ENTITY 10u
     #define MAT_HAND 20u

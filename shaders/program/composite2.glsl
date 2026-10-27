@@ -233,6 +233,17 @@
 
             vec3 under=texture(colortex8,rUV(uvR)).rgb+gi;
 
+            ivec2 qR=ivec2(rUV(uvR)*vec2(viewWidth,viewHeight));
+            vec4 wR=texelFetch(colortex13,qR,0);
+            vec3 frontAbs=vec3(0.);
+            if(wR.w<-.5){
+                float cR=floor(-wR.w);
+                float thR=(cR<1.5)?.125:((cR<2.5)?1.:((cR<3.5)?.5:.3));
+                frontAbs=-log(clamp(pow(texelFetch(colortex14,qR,0).rgb,vec3(2.2)),.02,1.))*thR*.6;
+            }
+            vec3 backAbs=max(texelFetch(colortex12,qR,0).rgb-frontAbs-.01,0.);
+            under*=exp(-backAbs);
+
             float NdotV=max(dot(N,-D),.001);
             float c5=1.-NdotV;
             float F=.04+.96*c5*c5*c5*c5*c5;
@@ -245,14 +256,16 @@
             vec3 lightCol=sunCol+moonCol;
             vec3 sky=skyAmbient();
 
-            float outdoors=skyLm*skyLm*skyLm*skyLm;
-            vec3 scat=tint*alpha*outdoors*(sky*.8+lightCol*abs(dot(N,L))*.32);
+            vec3 absC=-log(clamp(tint,.02,1.));
+            float pathLen=thick/cosT;
+            vec3 transmit=exp(-absC*pathLen*.6);
 
-            vec3 transmit=mix(vec3(1.),tint/max(max(tint.r,max(tint.g,tint.b)),.25),clamp(alpha*1.5,0.,1.));
+            float outdoors=skyLm*skyLm*skyLm*skyLm;
+            vec3 scat=tint*outdoors*(sky*.8+lightCol*abs(dot(N,L))*.32)*.05;
+
             hdr=under*transmit*(1.-F)+scat;
         }
 
-        //color=vec4(pow(ACES(hdr),vec3(.4545455)),base.a);
         color=vec4(hdr,base.a);
     }
 

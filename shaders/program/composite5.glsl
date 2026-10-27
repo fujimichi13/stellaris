@@ -16,11 +16,6 @@
     #include "/settings.glsl"
     #include "/lib/utility/uniforms.glsl"
 
-    /*
-    const int colortex15Format=RGBA16F;
-    const bool colortex15Clear=false;
-    */
-
     in vec2 texcoord;
 
     /* RENDERTARGETS:0,15 */

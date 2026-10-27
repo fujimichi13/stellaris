@@ -22,17 +22,6 @@
     #include "/lib/lighting/gtao.glsl"
     #include "/lib/atmosphere/volumetricClouds.glsl"
 
-    /*
-    const int colortex3Format=RGBA32UI;
-    const int colortex7Format=RGBA16F;
-    const int colortex8Format=RGBA16F;
-
-    const bool shadowtex0Nearest=true;
-    const bool shadowtex1Nearest=true;
-
-    const float shadowDistanceRenderMul = 1.0;
-    */
-
     layout(r32ui) uniform uimage2D histXY;
 
     #ifdef VOLUMETRIC_CLOUDS

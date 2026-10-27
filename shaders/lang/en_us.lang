@@ -27,7 +27,6 @@ option.CLOUD_SCALE=Scale
 option.CLOUD_SUNLIGHTING=SunLight
 option.CLOUD_SKYLIGHTING=SkyLight
 option.CLOUD_WIND_SPEED=Wind Speed
-option.2.=Edge Erosion
 
 option.SKYLIGHT_CURVE=SkyLight Curve
 

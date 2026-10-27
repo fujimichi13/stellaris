@@ -19,13 +19,7 @@
     #include "/lib/utility/dithering.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/voxel/voxel.glsl"
-
-    /*
-    const int colortex5Format=RGBA16F;
-
-    const bool colortex5Clear=false;
-    */
-
+    
     in vec2 texcoord;
 
     /* RENDERTARGETS:5 */

@@ -29,9 +29,10 @@
         float gk=0.;
         if(gi>=200&&gi<218) gk=1.;
         else if(gi>=100&&gi<118) gk=2.;
-        vxBlockId=(gk>1.5)?2.:((gk>.5)?3.:mc_Entity.x);
+        vxBlockId=mc_Entity.x;
 
         vxFlat=vec4(0.,0.,0.,-1.);
+        if(abs(mc_Entity.x-3.)<.5) vxFlat=vec4(1.,0.,0.,-1.);
         if(gk>0.){
             int gn=gi%100;
             vxFlat=(gn==0)?vec4(0.):vec4(1.,0.,0.,-1.);

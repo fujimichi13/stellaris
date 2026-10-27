@@ -16,11 +16,6 @@
     #include "/settings.glsl"
     #include "/lib/utility/math.glsl"
     #include "/lib/utility/uniforms.glsl"
-
-    /*
-    const int colortex0Format=RGBA16F;
-    */
-
     #include "/lib/camera/bloom.glsl"
 
     in vec2 texcoord;
