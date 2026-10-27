@@ -1,14 +1,19 @@
 #ifndef UNIFORMS_GLSL
     #define UNIFORMS_GLSL a
 
+    #include "/lib/utility/gbufferData.glsl"
+
     uniform sampler2D noisetex;
-    uniform sampler2D noisetex1;
+    uniform sampler2D cuBase;
+    uniform sampler3D cuCurl;
+    uniform sampler3D cuDetail1;
+    uniform sampler3D cuDetail2;
     uniform sampler2D rippleTex;
 
     uniform sampler2D colortex0;
     uniform sampler2D colortex1;
     uniform sampler2D colortex2;
-    uniform sampler2D colortex3;
+    uniform usampler2D colortex3;
     uniform sampler2D colortex4;
     uniform sampler2D colortex5;
     uniform sampler2D colortex6;
@@ -42,10 +47,16 @@
     uniform sampler2D samplerCloudHistB;
     
     uniform sampler2D samplerWarpXY;
+    uniform sampler2D samplerExposure;
+    uniform sampler2D samplerBloom0;
+    uniform sampler2D samplerBloom1;
+    uniform sampler2D samplerBloom2;
+    uniform sampler2D samplerBloom3;
 
     uniform float viewWidth;
     uniform float viewHeight;
     uniform float frameTimeCounter;
+    uniform float frameTime;
     uniform float rainStrength;
     uniform float cloudRain;
 
@@ -91,4 +102,5 @@
         #endif
         return p;
     }
+
 #endif

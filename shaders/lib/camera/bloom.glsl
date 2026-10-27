@@ -58,17 +58,17 @@
 
         const vec2 workGroupsRender=vec2(0.5,0.5);
 
-        layout(rgba16f) uniform writeonly image2D colorimg9;
+        layout(r11f_g11f_b10f) uniform writeonly image2D bloom0;
 
         void main(){
             ivec2 px=ivec2(gl_GlobalInvocationID.xy);
-            ivec2 size=imageSize(colorimg9);
+            ivec2 size=imageSize(bloom0);
             if (any(greaterThanEqual(px,size))) return;
 
             vec2 uv=(vec2(px)+.5)/vec2(size);
             vec3 hdr=texture(colortex0,uv).rgb*.0625;
             if (any(isnan(hdr))) hdr=vec3(0.0);
-            imageStore(colorimg9,px,vec4(softThreshold(max(hdr,.0)),1.));
+            imageStore(bloom0,px,vec4(softThreshold(max(hdr,.0)),1.));
         }
 
     #endif
@@ -79,16 +79,16 @@
 
         const vec2 workGroupsRender=vec2(0.25,0.25);
 
-        layout(rgba16f) uniform writeonly image2D colorimg10;
+        layout(r11f_g11f_b10f) uniform writeonly image2D bloom1;
 
         void main(){
             ivec2 px=ivec2(gl_GlobalInvocationID.xy);
-            ivec2 size=imageSize(colorimg10);
+            ivec2 size=imageSize(bloom1);
             if (any(greaterThanEqual(px,size))) return;
 
             vec2 uv=(vec2(px)+.5)/vec2(size);
-            vec2 texel=1./vec2(textureSize(colortex9,0));
-            imageStore(colorimg10,px,vec4(downsample13(colortex9,uv,texel),1.));
+            vec2 texel=1./vec2(textureSize(samplerBloom0,0));
+            imageStore(bloom1,px,vec4(downsample13(samplerBloom0,uv,texel),1.));
         }
 
     #endif
@@ -99,16 +99,16 @@
 
         const vec2 workGroupsRender=vec2(0.125,0.125);
 
-        layout(rgba16f) uniform writeonly image2D colorimg11;
+        layout(r11f_g11f_b10f) uniform writeonly image2D bloom2;
 
         void main(){
             ivec2 px=ivec2(gl_GlobalInvocationID.xy);
-            ivec2 size=imageSize(colorimg11);
+            ivec2 size=imageSize(bloom2);
             if (any(greaterThanEqual(px,size))) return;
 
             vec2 uv=(vec2(px)+.5)/vec2(size);
-            vec2 texel=1./vec2(textureSize(colortex10,0));
-            imageStore(colorimg11,px,vec4(downsample13(colortex10,uv,texel),1.));
+            vec2 texel=1./vec2(textureSize(samplerBloom1,0));
+            imageStore(bloom2,px,vec4(downsample13(samplerBloom1,uv,texel),1.));
         }
 
     #endif
@@ -119,16 +119,16 @@
 
         const vec2 workGroupsRender=vec2(0.0625,0.0625);
 
-        layout(rgba16f) uniform writeonly image2D colorimg12;
+        layout(r11f_g11f_b10f) uniform writeonly image2D bloom3;
 
         void main(){
             ivec2 px=ivec2(gl_GlobalInvocationID.xy);
-            ivec2 size=imageSize(colorimg12);
+            ivec2 size=imageSize(bloom3);
             if (any(greaterThanEqual(px,size))) return;
 
             vec2 uv=(vec2(px)+.5)/vec2(size);
-            vec2 texel=1./vec2(textureSize(colortex11,0));
-            imageStore(colorimg12,px,vec4(downsample13(colortex11,uv,texel),1.));
+            vec2 texel=1./vec2(textureSize(samplerBloom2,0));
+            imageStore(bloom3,px,vec4(downsample13(samplerBloom2,uv,texel),1.));
         }
 
     #endif
@@ -139,18 +139,18 @@
 
         const vec2 workGroupsRender=vec2(0.125,0.125);
 
-        layout(rgba16f) uniform image2D colorimg11;
+        layout(r11f_g11f_b10f) uniform image2D bloom2;
 
         void main(){
             ivec2 px=ivec2(gl_GlobalInvocationID.xy);
-            ivec2 size=imageSize(colorimg11);
+            ivec2 size=imageSize(bloom2);
             if (any(greaterThanEqual(px,size))) return;
 
             vec2 uv=(vec2(px)+.5)/vec2(size);
-            vec2 texel=1./vec2(textureSize(colortex12,0));
-            vec3 up=upsampleTent9(colortex12,uv,texel,1.);
-            vec3 base=imageLoad(colorimg11,px).rgb;
-            imageStore(colorimg11,px,vec4(base+up,1.));
+            vec2 texel=1./vec2(textureSize(samplerBloom3,0));
+            vec3 up=upsampleTent9(samplerBloom3,uv,texel,1.);
+            vec3 base=imageLoad(bloom2,px).rgb;
+            imageStore(bloom2,px,vec4(base+up,1.));
         }
 
     #endif
@@ -161,18 +161,18 @@
 
         const vec2 workGroupsRender=vec2(0.25,0.25);
 
-        layout(rgba16f) uniform image2D colorimg10;
+        layout(r11f_g11f_b10f) uniform image2D bloom1;
 
         void main(){
             ivec2 px=ivec2(gl_GlobalInvocationID.xy);
-            ivec2 size=imageSize(colorimg10);
+            ivec2 size=imageSize(bloom1);
             if (any(greaterThanEqual(px,size))) return;
 
             vec2 uv=(vec2(px)+.5)/vec2(size);
-            vec2 texel=1./vec2(textureSize(colortex11,0));
-            vec3 up=upsampleTent9(colortex11,uv,texel,1.);
-            vec3 base=imageLoad(colorimg10,px).rgb;
-            imageStore(colorimg10,px,vec4(base+up,1.));
+            vec2 texel=1./vec2(textureSize(samplerBloom2,0));
+            vec3 up=upsampleTent9(samplerBloom2,uv,texel,1.);
+            vec3 base=imageLoad(bloom1,px).rgb;
+            imageStore(bloom1,px,vec4(base+up,1.));
         }
 
     #endif

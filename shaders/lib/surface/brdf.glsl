@@ -2,6 +2,7 @@
     #define BRDF_GLSL
 
     #include "/lib/utility/math.glsl"
+    #include "/lib/utility/gbufferData.glsl"
 
     #define skyVisibility(l) (pow(l,SKYLIGHT_CURVE)*pow(.9667,4.-SKYLIGHT_CURVE))
 
@@ -14,101 +15,9 @@
         return mix(.05,1.,smoothstep(-1.,0.,N.y));
     }
 
-    struct Material{
-        vec3 albedo;
-        vec3 diffuse;
-        vec3 F0;
-        vec3 eta;
-        vec3 kappa;
-        bool conductor;
-        float roughness;
-        float metallic;
-        float ao;
-        float emission;
-        float sss;
-        float porosity;
-    };
-
-    const vec3 metaleta[8]=vec3[8](
-        vec3(2.9114,2.9497,2.5845),
-        vec3(.18299,.42108,1.3734),
-        vec3(1.3456,.96521,.61722),
-        vec3(3.1071,3.1812,2.3230),
-        vec3(.27105,.67693,1.3164),
-        vec3(1.91,1.83,1.44),
-        vec3(2.3757,2.0847,1.8453),
-        vec3(.15943,.14512,.13547)
-    );
-    const vec3 metalk[8]=vec3[8](
-        vec3(3.0893,2.9318,2.7670),
-        vec3(3.4242,2.3459,1.7704),
-        vec3(7.4746,6.3995,5.3031),
-        vec3(3.3314,3.3291,3.1350),
-        vec3(3.6092,2.6248,2.2921),
-        vec3(3.51,3.4,3.18),
-        vec3(4.2655,3.7153,3.1365),
-        vec3(3.9291,3.19,2.3808)
-    );
-
-    vec3 fresnelConductor(float c,vec3 n,vec3 k){
-        float c2=c*c;
-        vec3 nk=n*n+k*k;
-        vec3 rs=(nk-2.*n*c+c2)/(nk+2.*n*c+c2);
-        vec3 rp=(nk*c2-2.*n*c+1.)/(nk*c2+2.*n*c+1.);
-        return .5*(rs+rp);
-    }
-
-    float f90From(vec3 F0){
-        return saturate(50.*dot(F0,vec3(.33333)));
-    }
-
     vec3 fresnel(Material m,float VoH){
         VoH=max(VoH,1e-4);
-        if(m.conductor) return fresnelConductor(VoH,m.eta,m.kappa);
-        return m.F0+(f90From(m.F0)-m.F0)*pow5(1.-VoH);
-    }
-
-    Material decodeLabPBR(vec4 spec,vec3 albedo){
-        Material m;
-        m.albedo=albedo;
-        m.roughness=max((1.-spec.r)*(1.-spec.r),.045);
-
-        int g=int(spec.g*255.+.5);
-        m.conductor=false;
-        m.eta=vec3(0.);
-        m.kappa=vec3(0.);
-        m.metallic=0.;
-
-        if(g<230){
-            m.F0=vec3(float(g)/255.);
-        }else if(g<=237){
-            m.eta=metaleta[g-230];
-            m.kappa=metalk[g-230];
-            m.conductor=true;
-            m.metallic=1.;
-            m.F0=fresnelConductor(1.,m.eta,m.kappa);
-        }else{
-            m.metallic=1.;
-            m.F0=albedo;
-        }
-        m.diffuse=albedo*(1.-m.metallic);
-
-        int b=int(spec.b*255.+.5);
-        m.porosity=(b<=64)?float(b)/64.:0.;
-        m.sss=(b>64)?float(b-65)/190.:0.;
-
-        int a=int(spec.a*255.+.5);
-        m.emission=(a<255)?float(a)/254.:0.;
-
-        m.ao=1.;
-        return m;
-    }
-
-    vec3 decodeLabPBRNormal(vec4 nt,mat3 tbn,out float ao){
-        if(all(lessThan(nt.rgb,vec3(1e-3)))) nt=vec4(.5,.5,1.,1.);
-        vec2 xy=nt.rg*2.-1.;
-        ao=nt.b;
-        return normalize(tbn*vec3(xy,sqrt(max(1.-dot(xy,xy),0.))));
+        return m.F0+(vec3(m.F90)-m.F0)*pow5(1.-VoH);
     }
 
     float D_GGX(float NoH,float a){
@@ -143,7 +52,7 @@
 
     vec3 specalbedo(Material m,float NoV){
         vec2 ab=envBRDF(m.roughness,NoV);
-        return (m.F0*ab.x+f90From(m.F0)*ab.y)*msComp(m.F0,ab);
+        return (m.F0*ab.x+m.F90*ab.y)*msComp(m.F0,ab);
     }
 
     float idrspecweight(float roughness){
@@ -183,7 +92,7 @@
     vec3 evalAmbient(Material m,vec3 N,vec3 V,vec3 skyDiffuse,vec3 skyEnv){
         float NoV=max(dot(N,V),1e-3);
         vec2 ab=envBRDF(m.roughness,NoV);
-        vec3 sa=(m.F0*ab.x+f90From(m.F0)*ab.y)*msComp(m.F0,ab);
+        vec3 sa=(m.F0*ab.x+m.F90*ab.y)*msComp(m.F0,ab);
         float so=specocc(NoV,m.ao,m.roughness);
         return m.diffuse*(1.-sa)*skyDiffuse*m.ao+sa*skyEnv*so;
     }

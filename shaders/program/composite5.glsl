@@ -66,6 +66,18 @@
         return max(r/ws,0.);
     }
 
+    vec2 reproject(vec2 uv,float depth,vec2 tc,out bool ok){
+        ok=true;
+        if(depth<.56) return tc;
+        vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
+        vec3 wp=(gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz;
+        if(depth<1.) wp+=cameraPosition-previousCameraPosition;
+        vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(wp,1.));
+        ok=pc.w>0.;
+        vec2 pu=pc.xy/max(pc.w,1e-5)*.5+.5;
+        return tc+(pu-uv);
+    }
+
     void main(){
         vec2 fres=vec2(viewWidth,viewHeight);
         vec2 rr=RRES;
@@ -104,18 +116,19 @@
         float curA=texelFetch(colortex0,clamp(p0,ivec2(0),rres-1),0).a;
 
         vec2 uvC=(vec2(closestQ)+.5)/rr-taaJitter*.5;
-        vec2 prevUV;
         bool ok=true;
-        if(closest<.56){
-            prevUV=texcoord;
-        }else{
-            vec4 v=gbufferProjectionInverse*vec4(uvC*2.-1.,closest*2.-1.,1.);
-            vec3 wp=(gbufferModelViewInverse*vec4(v.xyz/v.w,1.)).xyz;
-            if(closest<1.) wp+=cameraPosition-previousCameraPosition;
-            vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(wp,1.));
-            ok=pc.w>0.;
-            prevUV=pc.xy/max(pc.w,1e-5)*.5+.5;
-            prevUV=texcoord+(prevUV-uvC);
+        vec2 prevUV=reproject(uvC,closest,texcoord,ok);
+
+        float stretch=0.;
+        if(ok&&closest>=.56){
+            vec2 px1=vec2(1.,0.)/rr;
+            vec2 py1=vec2(0.,1.)/rr;
+            bool o1,o2;
+            vec2 ux=reproject(uvC+px1,closest,texcoord+px1,o1);
+            vec2 uy=reproject(uvC+py1,closest,texcoord+py1,o2);
+            vec2 dx=(ux-prevUV)*fres;
+            vec2 dy=(uy-prevUV)*fres;
+            stretch=abs(length(dx)-1.)+abs(length(dy)-1.)+abs(dot(dx,dy));
         }
         ok=ok&&all(greaterThan(prevUV,vec2(0.)))&&all(lessThan(prevUV,vec2(1.)));
 
@@ -126,7 +139,8 @@
         vec3 hC=compress(hRaw);
 
         float aggr=clamp(TAA_AGGRESSION,0.,1.);
-        float gamma=mix(2.,.8,aggr);
+        float stretchK=smoothstep(.01,.1,stretch);
+        float gamma=mix(mix(2.,.8,aggr),.6,stretchK);
         vec3 lo=max(mean-gamma*sigma,mn);
         vec3 hi=min(mean+gamma*sigma,mx);
         vec3 hc=clipAABB((lo+hi)*.5,(hi-lo)*.5,hC);
@@ -134,6 +148,7 @@
         float vel=length((prevUV-texcoord)*fres);
         float w=1.-(1.-TAA_BLENDWEIGHT)*RS*RS;
         w*=1.-.6*aggr*smoothstep(0.,4.,vel);
+        w*=1.-.8*stretchK;
         w*=1.-.75*clamp(length(hC-hc)*2.*aggr,0.,1.);
         if(!ok||hA<.5) w=0.;
 

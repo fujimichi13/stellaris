@@ -110,7 +110,8 @@
 
         state=pcg(uint(px.x)+pcg(uint(px.y)+pcg(uint(frameCounter)+7u)));
 
-        vec4 nd=texelFetch(colortex3,px,0);
+        uvec4 gbPx=texelFetch(colortex3,px,0);
+        vec4 nd=gbPresent(gbPx)?vec4(gbUnpackNormal(gbPx),float(gbPx.z>>24)*(1./255.)):vec4(0.);
         vec4 wn=texelFetch(colortex13,px,0);
 
         vec3 P=viewSpacePosition(texcoord,depth);
@@ -123,13 +124,13 @@
 
         if(abs(wn.w)<.5&&dot(nd.xyz,nd.xyz)>=.25){
             N=normalize(nd.xyz);
-            Material m=decodeLabPBR(texelFetch(colortex2,px,0),vec3(0.));
-            if(m.roughness>=.6) return;
+            float rough=gbUnpackRoughness(texelFetch(colortex3,px,0));
+            if(rough>=.6) return;
 
-            skyLm=texelFetch(colortex4,px,0).g;
+            skyLm=gbUnpackLM(texelFetch(colortex3,px,0)).y;
 
             vec3 Rm=reflect(-V,N);
-            float alpha=m.roughness*m.roughness;
+            float alpha=rough*rough;
             vec3 Hm=sampleGGXVNDF(V,N,alpha,bluenoise(gl_FragCoord.xy));
             Rr=reflect(-V,Hm);
             if(dot(Rr,N)<=.01) Rr=Rm;

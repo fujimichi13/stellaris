@@ -152,11 +152,11 @@
         ivec2 res=ivec2(RRES);
 
         float dc=texelFetch(depthtex1,px,0).r;
-        float centerAO=texelFetch(colortex4,px,0).b;
+        float centerAO=gbUnpackGtao(texelFetch(colortex3,px,0));
         if(!validDepth(dc)) return 1.;
 
         float zc=linearDepth(dc);
-        vec3 nc=texelFetch(colortex3,px,0).xyz;
+        vec3 nc=gbUnpackNormal(texelFetch(colortex3,px,0));
         nc/=max(length(nc),1e-4);
 
         float sum=0.;
@@ -167,13 +167,13 @@
                 float dq=texelFetch(depthtex1,q,0).r;
                 if(!validDepth(dq)) continue;
 
-                vec3 nq=texelFetch(colortex3,q,0).xyz;
+                vec3 nq=gbUnpackNormal(texelFetch(colortex3,q,0));
                 nq/=max(length(nq),1e-4);
 
                 float w=exp(-abs(linearDepth(dq)-zc)/(.03*zc+.04));
                 w*=pow(max(dot(nc,nq),0.),16.);
 
-                sum+=texelFetch(colortex4,q,0).b*w;
+                sum+=gbUnpackGtao(texelFetch(colortex3,q,0))*w;
                 wsum+=w;
             }
         }

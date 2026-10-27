@@ -20,9 +20,9 @@
 
     in vec2 texcoord;
 
-    /* RENDERTARGETS:0,4 */
+    /* RENDERTARGETS:0,3 */
     layout(location=0) out vec4 color;
-    layout(location=1) out vec4 color4;
+    layout(location=1) out uvec4 color1;
 
     vec3 worldSpacePosition(vec2 uv,float depth){
         vec4 clip=vec4(uv*2.-1.,depth*2.-1.,1.);
@@ -45,13 +45,13 @@
         float depth=texelFetch(depthtex0,px,0).r;
 
         color=albedo;
-
-        vec2 lm=texelFetch(colortex4,px,0).rg;
+        
+        uvec4 gb0=texelFetch(colortex3,px,0);
         float ao=1.;
         #ifdef GTAO_ENABLED
             ao=c(px,depth);
         #endif
-        color4=vec4(lm,ao,1.);
+        color1=gbSetGtao(gb0,ao);
 
         if(depth<1.) return;
 

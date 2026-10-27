@@ -38,7 +38,7 @@
 
 #ifdef fsh
 
-    #include "/lib/surface/brdf.glsl"
+    #include "/lib/surface/labpbr.glsl"
 
     in vec4 glcolor;
     in vec2 texcoord;
@@ -48,11 +48,9 @@
     in vec3 vBitangent;
     in vec3 vWorldPos;
 
-    /* RENDERTARGETS: 0,2,3,4 */
+    /* RENDERTARGETS: 0,3 */
     layout(location=0) out vec4 color;
-    layout(location=1) out vec4 color2;
-    layout(location=2) out vec4 color3;
-    layout(location=3) out vec4 color4;
+    layout(location=1) out uvec4 color1;
 
 
     float valuen(vec2 p){
@@ -99,14 +97,12 @@
         return n;
     }
 
-    void rainPuddles(vec3 worldPos,vec3 Ng,vec2 lm,inout vec3 albedo,inout vec4 spec,inout vec3 N){
+    void rainPuddles(vec3 worldPos,vec3 Ng,vec2 lm,inout vec3 albedo,inout Material m,inout vec3 N){
         float rain=saturate(cloudRain);
         float sky=smoothstep(.75,.95,lm.y);
-        if(rain<.001||sky<.001||spec.g>.9) return;
+        if(rain<.001||sky<.001||m.metallic>.5) return;
 
-        int b=int(spec.b*255.+.5);
-        float por=(b<=64)?float(b)/64.:0.;
-        if(dot(spec,vec4(1.))<1e-4) por=.5;
+        float por=m.porosity;
 
         float soak=saturate((rain-por*.6)/(1.-por*.6));
         float cover=soak*(1.-por*.8);
@@ -125,8 +121,9 @@
         albedo=pow(albedo,vec3(1.+darken));
 
         float smoothTarget=mix(mix(.7,.42,por),.97,puddle);
-        spec.r=mix(spec.r,max(spec.r,smoothTarget),wetAmt);
-        spec.g=max(spec.g,.04*saturate(wetAmt*2.));
+        m.smoothness=mix(m.smoothness,max(m.smoothness,smoothTarget),wetAmt);
+        m.F0=max(m.F0,vec3(.04*saturate(wetAmt*2.)));
+        materialFinalize(m);
 
         N=normalize(mix(N,Ng,saturate(wetAmt*.35+puddle*.65)));
 
@@ -154,14 +151,16 @@
 
         vec2 lm=saturate((vlightmap-.03125)/.9375);
 
+        Material m=decodeLabPBR(spec,toLinear(albedo.rgb));
+        m.ao=ao;
+        m.id=MAT_TERRAIN;
+
         #ifdef PUDDLES_ENABLED
-            rainPuddles(vWorldPos,normalize(vNormal),lm,albedo.rgb,spec,N);
+            rainPuddles(vWorldPos,normalize(vNormal),lm,albedo.rgb,m,N);
         #endif
 
         color=vec4(albedo.rgb,albedo.a);
-        color2=spec;
-        color3=vec4(N,ao);
-        color4=vec4(lm,0.,1.);
+        color1=gbPack(m,N,lm,0.);
     }
 
 #endif

@@ -48,10 +48,10 @@
             return 3;
         }
 
-        vec4 nd=texelFetch(colortex3,q,0);
+        uvec4 gbQ=texelFetch(colortex3,q,0);
+        vec4 nd=gbPresent(gbQ)?vec4(gbUnpackNormal(gbQ),float(gbQ.z>>24)*(1./255.)):vec4(0.);
         if(dot(nd.xyz,nd.xyz)<.25) return 0;
-        float sr=texelFetch(colortex2,q,0).r;
-        rough=max((1.-sr)*(1.-sr),.045);
+        rough=gbUnpackRoughness(gbQ);
         if(rough>=.6) return 0;
         n=normalize(nd.xyz);
         return 1;
@@ -124,16 +124,15 @@
         float depth=texelFetch(depthtex0,px,0).r;
         vec3 hdr=scene.rgb;
 
-        vec4 nd=texelFetch(colortex3,px,0);
+        uvec4 gbPx=texelFetch(colortex3,px,0);
+        vec4 nd=gbPresent(gbPx)?vec4(gbUnpackNormal(gbPx),float(gbPx.z>>24)*(1./255.)):vec4(0.);
 
         if(depth<1.&&depth>=.56&&dot(nd.xyz,nd.xyz)>=.25&&abs(texelFetch(colortex13,px,0).w)<.5){
             vec3 N=normalize(nd.xyz);
-            vec4 spec=texelFetch(colortex2,px,0);
-            vec2 lm=texelFetch(colortex4,px,0).rg;
+            vec2 lm=gbUnpackLM(gbPx);
 
-            vec3 albedoLin=pow(texelFetch(colortex7,px,0).rgb,vec3(2.2));
-            Material m=decodeLabPBR(spec,albedoLin);
-            m.ao=nd.w;
+            vec3 albedoLin=toLinear(texelFetch(colortex7,px,0).rgb);
+            Material m=gbUnpack(gbPx,albedoLin);
             #ifdef GTAO_ENABLED
                 m.ao*=calcGTAO(px,albedoLin);
             #endif
@@ -205,15 +204,17 @@
         }
 
         if(depth<1.&&wn.w<-.5){
+            bool handGlass=depth<.56;
+            float gdepth=handGlass?((depth*2.-1.)/.125)*.5+.5:depth;
             vec3 N=normalize(wn.xyz);
-            vec3 P=viewSpacePosition(texcoord,depth);
+            vec3 P=viewSpacePosition(texcoord,gdepth);
             vec3 V=-normalize(mat3(gbufferModelViewInverse)*P);
             float NdotV=max(dot(N,V),.001);
             float c5=1.-NdotV;
             float F=.04+.96*c5*c5*c5*c5*c5;
 
             vec3 R=reflect(-V,N);
-            vec4 hit=reflectionFilter(px,depth,3,N,0.);
+            vec4 hit=handGlass?vec4(0.):reflectionFilter(px,depth,3,N,0.);
 
             float skyVis=skyVisibility(fract(-wn.w)/.99);
             vec3 skyRefl=skyRadiance(R);

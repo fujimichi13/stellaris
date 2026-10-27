@@ -1,5 +1,4 @@
 
-
 #ifdef vsh
 
     out vec2 texcoord;
@@ -24,12 +23,14 @@
     #include "/lib/atmosphere/volumetricClouds.glsl"
 
     /*
-    const int colortex3Format=RGBA16F;
+    const int colortex3Format=RGBA32UI;
     const int colortex7Format=RGBA16F;
     const int colortex8Format=RGBA16F;
 
     const bool shadowtex0Nearest=true;
     const bool shadowtex1Nearest=true;
+
+    const float shadowDistanceRenderMul = 1.0;
     */
 
     layout(r32ui) uniform uimage2D histXY;
@@ -55,16 +56,35 @@
             if(writeA) imageStore(cloudHistA,q,v); else imageStore(cloudHistB,q,v);
         }
 
+        vec2 cloudPrevUV(vec3 rd,out bool valid){
+            float ry=rd.y<0.?min(rd.y,-.05):max(rd.y,.05);
+            float t=clamp(((CLOUD_ALTITUDE*(1.-.3*saturate(cloudRain))+max(CLOUD_THICKNESS*(1.+.25*saturate(cloudRain)),1.)*.5)-cameraPosition.y)/ry,0.,1e8);
+            vec2 wd=vec2(1.,.35)*frameTime*CLOUD_WIND_SPEED;
+            vec3 wp=rd*t+(cameraPosition-previousCameraPosition)-vec3(wd.x,0.,wd.y);
+            vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(wp,1.));
+            valid=pc.w>0.;
+            return pc.xy/max(abs(pc.w),1e-5)*.5+.5;
+        }
+
         vec4 cloudTemporal(vec4 cur,vec3 rd,ivec2 px,vec2 uv,bool fresh){
             bool writeA=(frameCounter&1)==0;
             vec2 rr=RRES;
 
-            float ry=rd.y<0.?min(rd.y,-.05):max(rd.y,.05);
-            float t=clamp(((CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.)*.5-cameraPosition.y)/ry,0.,1e8);
-            vec3 wp=rd*t+(cameraPosition-previousCameraPosition);
-            vec4 pc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(wp,1.));
-            vec2 prevUV=pc.xy/max(abs(pc.w),1e-5)*.5+.5;
-            bool ok=pc.w>0.&&all(greaterThan(prevUV,vec2(0.)))&&all(lessThan(prevUV,vec2(1.)));
+            bool pv;
+            vec2 prevUV=cloudPrevUV(rd,pv);
+            bool ok=pv&&all(greaterThan(prevUV,vec2(0.)))&&all(lessThan(prevUV,vec2(1.)));
+
+            float stretch=0.;
+            if(ok){
+                vec2 px1=(vec2(px)+vec2(1.5,.5))/rr;
+                vec2 py1=(vec2(px)+vec2(.5,1.5))/rr;
+                bool v1,v2;
+                vec2 ux=cloudPrevUV(normalize(worldSpacePosition(px1,1.)),v1);
+                vec2 uy=cloudPrevUV(normalize(worldSpacePosition(py1,1.)),v2);
+                vec2 dx=(ux-prevUV)*rr;
+                vec2 dy=(uy-prevUV)*rr;
+                stretch=abs(length(dx)-1.)+abs(length(dy)-1.)+abs(dot(dx,dy));
+            }
 
             vec3 curC=cldCompress(cur.rgb);
             float n=0.;
@@ -95,10 +115,11 @@
 
                 if(wAcc>.75){
                     vec4 hist=acc/wAcc;
-                    float hn=nAcc/wAcc;
+                    float hn=floor(nAcc/wAcc+.5);
 
                     float motion=length((prevUV-uv)*rr);
                     if(fresh) hn*=1.-smoothstep(.15,3.,motion);
+                    hn*=1.-smoothstep(.015,.12,stretch);
                     hn*=smoothstep(.75,1.,wAcc);
                     hn=min(hn,32.-1.);
                     #if CLOUD_UPSCALING>0
@@ -113,7 +134,7 @@
                     float w=fresh?hn/(hn+1.):1.;
                     outC=mix(curC,hist.rgb,w);
                     outA=mix(cur.a,hist.a,w);
-                    n=fresh?hn+1.:max(hn,1.);
+                    n=floor((fresh?hn+1.:max(hn,1.))+.5);
                 }
             }
 
@@ -145,7 +166,7 @@
                 }
             #endif
 
-            cloudHistStore(px,vec4(outC,min(n,32.)+clamp(outA,0.,1.)*.999),writeA);
+            cloudHistStore(px,vec4(outC,min(floor(n),32.)+clamp(outA,0.,1.)*.999),writeA);
             return vec4(cldDecompress(outC),outA);
         }
     #endif
@@ -283,18 +304,14 @@
 
         return mix(vec3(1.),vis,fade);
     }
-
-    #ifndef MC_HAND_DEPTH
-        #define MC_HAND_DEPTH 0.125
-    #endif
-
+    
     void main(){
         ivec2 px=ivec2(gl_FragCoord.xy);
         vec4 albedo=texelFetch(colortex0,px,0);
         float depth=texelFetch(depthtex0,px,0).r;
         if(abs(texelFetch(colortex13,px,0).w)>.5) depth=texelFetch(depthtex1,px,0).r;
         bool isHand=depth<.56;
-        if(isHand) depth=((depth*2.-1.)/MC_HAND_DEPTH)*.5+.5;
+        if(isHand) depth=((depth*2.-1.)/.125)*.5+.5;
 
         color=albedo;
         color1=vec4(0.,0.,0.,1.);
@@ -314,12 +331,9 @@
 
                         if(!myTurn){
                             vec2 rr=RRES;
-                            float ry=cloudDir.y<0.?min(cloudDir.y,-.05):max(cloudDir.y,.05);
-                            float tt=clamp(((CLOUD_ALTITUDE*(1.-.35*saturate(cloudRain)))+max(CLOUD_THICKNESS*2.2*(1.+.25*saturate(cloudRain)),1.)*.5-cameraPosition.y)/ry,0.,1e8);
-                            vec3 pw=cloudDir*tt+(cameraPosition-previousCameraPosition);
-                            vec4 ppc=gbufferPreviousProjection*(gbufferPreviousModelView*vec4(pw,1.));
-                            vec2 pUV=ppc.xy/max(abs(ppc.w),1e-5)*.5+.5;
-                            bool pOk=ppc.w>0.&&all(greaterThan(pUV,vec2(0.)))&&all(lessThan(pUV,vec2(1.)));
+                            bool pv;
+                            vec2 pUV=cloudPrevUV(cloudDir,pv);
+                            bool pOk=pv&&all(greaterThan(pUV,vec2(0.)))&&all(lessThan(pUV,vec2(1.)));
 
                             if(pOk&&length((pUV-texcoord)*rr)<4.){
                                 vec2 hp=pUV*rr-.5;
@@ -381,22 +395,22 @@
             imageAtomicAdd(histXY,ivec2(binY,1),1u);
         }
 
-        vec3 visC=vec3(smoothstep(.3,.9,texelFetch(colortex4,px,0).g));
+        uvec4 gbPx=texelFetch(colortex3,px,0);
+
+        vec3 visC=vec3(smoothstep(.3,.9,gbUnpackLM(gbPx).y));
         if(!isHand) visC=sampleShadow(worldPos,ng,NdotLg);
 
-        vec4 nd=texelFetch(colortex3,px,0);
+        vec4 nd=gbPresent(gbPx)?vec4(gbUnpackNormal(gbPx),float(gbPx.z>>24)*(1./255.)):vec4(0.);
         if(dot(nd.xyz,nd.xyz)<.25){
             color=vec4(albedo.rgb*mix(vec3(.35),vec3(1.),visC),albedo.a);
             return;
         }
 
         vec3 N=normalize(nd.xyz);
-        vec4 spec=texelFetch(colortex2,px,0);
-        vec2 lm=texelFetch(colortex4,px,0).rg;
+        vec2 lm=gbUnpackLM(gbPx);
 
         vec3 albedoLin=pow(albedo.rgb,vec3(2.2));
-        Material m=decodeLabPBR(spec,albedoLin);
-        m.ao=nd.w;
+        Material m=gbUnpack(gbPx,albedoLin);
 
         #ifdef GTAO_ENABLED
             m.ao*=calcGTAO(px,albedoLin);

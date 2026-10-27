@@ -6,43 +6,11 @@
 #include "/lib/utility/space.glsl"
 
 layout(local_size_x=8,local_size_y=8) in;
-const vec2 workGroupsRender=vec2(.5,.5);
+const vec2 workGroupsRender=vec2(1.0,1.0);
 
-layout(rgba16f) uniform image2D HistCol;
-layout(rgba32f) uniform image2D HistMom;
-layout(rgba16f) uniform image2D HistGeo;
-
-layout(rgba16f) uniform image2D CurrentFrame;
-layout(rgba32f) uniform image2D MomCurrent;
-layout(rgba16f) uniform image2D GeoCurrent;
-
-layout(rgba16f) uniform image2D AtrA;
-layout(rgba16f) uniform image2D AtrB;
+#include "/lib/camera/util.glsl"
 
 const float KB3[3]=float[3](.375,.25,.0625);
-
-#if iters==0
-    #define SRC CurrentFrame
-    #define DST AtrA
-#elif iters==1
-    #define SRC AtrA
-     #define DST AtrB
-#elif iters==2
-    #define SRC AtrB
-    #define DST AtrA
-#elif iters==3
-    #define SRC AtrA
-    #define DST AtrB
-#elif iters==4
-    #define SRC AtrB
-    #define DST AtrA
-#elif iters==5
-    #define SRC AtrA
-    #define DST AtrB
-#else
-    #define SRC AtrB
-    #define DST AtrA
-#endif
 
 ivec2 dnJitter(){
     return ivec2(frameCounter & 1,(frameCounter >> 1) & 1);
@@ -77,7 +45,7 @@ float planeTol(float d){
     float histValidity(ivec2 q,vec3 N,vec3 rel,float tolT,mat4 prevProjInv,mat3 prevRotInv,out float pdOut){
         pdOut=1e9;
         if(!inBounds(q,ivec2(RRES) >> 1)) return 0.;
-        vec4 pg=imageLoad(HistGeo,q);
+        vec4 pg=GeoHist(q);
         if(pg.a<=0.) return 0.;
         float cn=dot(pg.rgb,N);
         if(cn<.85) return 0.;
@@ -93,18 +61,16 @@ float planeTol(float d){
         ivec2 hres=fullRes >> 1;
         if(any(greaterThanEqual(hp,hres))) return;
 
-        float dist=texelFetch(colortex6,hp,0).r;
+        float dist=texelFetch(colortex5,hp,0).a;
         if(dist<=0. || isnan(dist) || isinf(dist)){
-            imageStore(CurrentFrame,hp,vec4(0.));
-            imageStore(MomCurrent,hp,vec4(0.));
-            imageStore(GeoCurrent,hp,vec4(0.));
+            StoreCurInvalid(hp);
             return;
         }
 
         ivec2 jit=dnJitter();
         ivec2 fp=min(hp*2+jit,fullRes-1);
 
-        vec3 N=safeNormalize(texelFetch(colortex3,fp,0).xyz);
+        vec3 N=safeNormalize(gbUnpackNormal(texelFetch(colortex3,fp,0)));
         vec3 vp=viewray(hp)*dist;
         float tolS=2.*planeTol(dist);
 
@@ -115,10 +81,10 @@ float planeTol(float d){
                 ivec2 q=hp+ivec2(x,y);
                 if(!inBounds(q,hres)) continue;
 
-                float dq=texelFetch(colortex6,q,0).r;
+                float dq=texelFetch(colortex5,q,0).a;
                 if(dq<=0.) continue;
 
-                vec3 nq=safeNormalize(texelFetch(colortex3,min(q*2+jit,fullRes-1),0).xyz);
+                vec3 nq=safeNormalize(gbUnpackNormal(texelFetch(colortex3,min(q*2+jit,fullRes-1),0)));
                 float cn=max(dot(N,nq),0.);
                 if(cn<.5) continue;
 
@@ -178,8 +144,8 @@ float planeTol(float d){
                 float vw=histValidity(q,N,rel,tolT,prevProjInv,prevRotInv,pd);
                 if(vw<=0.) continue;
 
-                vec4 hc=imageLoad(HistCol,q);
-                vec4 hm=imageLoad(HistMom,q);
+                vec4 hc,hm;
+                LoadHist(q,hc,hm);
                 if(any(isnan(hc)) || any(isnan(hm)) || any(isinf(hc)) || any(isinf(hm))) continue;
 
                 vec2 bw=mix(1.-f,f,vec2(o));
@@ -205,8 +171,8 @@ float planeTol(float d){
                         float vw=histValidity(q,N,rel,tolT*.75,prevProjInv,prevRotInv,pd);
                         if(vw<=0. || pd>=bestPd) continue;
 
-                        vec4 hc=imageLoad(HistCol,q);
-                        vec4 hm=imageLoad(HistMom,q);
+                        vec4 hc,hm;
+                        LoadHist(q,hc,hm);
                         if(any(isnan(hc)) || any(isnan(hm)) || any(isinf(hc)) || any(isinf(hm))) continue;
 
                         bestPd=pd;
@@ -285,9 +251,7 @@ float planeTol(float d){
         float neff=min(len,2.*64.-1.);
         float varMean=varIn / neff;
 
-        imageStore(CurrentFrame,hp,vec4(col,varMean));
-        imageStore(MomCurrent,hp,vec4(mom,len,0.));
-        imageStore(GeoCurrent,hp,vec4(N,dist));
+        StoreCur(hp,vec4(col,varMean),mom,len,N,dist);
     }
 
 #endif
@@ -299,20 +263,18 @@ float planeTol(float d){
         ivec2 hres=ivec2(RRES) >> 1;
         if(any(greaterThanEqual(hp,hres))) return;
 
-        vec4 gc=imageLoad(GeoCurrent,hp);
+        vec4 gc=GeoCur(hp);
         float dp=gc.a;
 
         if(dp<=0.){
-            imageStore(DST,hp,vec4(0.));
+            StoreSlot(hp,(1-(iters & 1)),vec4(0.));
             #if iters==0
-                imageStore(HistCol,hp,vec4(0.));
-                imageStore(HistMom,hp,vec4(0.));
-                imageStore(HistGeo,hp,vec4(0.));
+                ClearHist(hp);
             #endif
             return;
         }
 
-        vec4 c0=imageLoad(SRC,hp);
+        vec4 c0=LoadSlot(hp,(iters & 1));
         vec3 np=safeNormalize(gc.rgb);
         vec3 vp=viewray(hp)*dp;
         float tol=planeTol(dp);
@@ -323,9 +285,9 @@ float planeTol(float d){
             for(int x=-1; x<=1; x++){
                 ivec2 q=hp+ivec2(x,y);
                 if(!inBounds(q,hres)) continue;
-                vec4 gq=imageLoad(GeoCurrent,q);
+                vec4 gq=GeoCur(q);
                 if(gq.a<=0.) continue;
-                vec4 cq=imageLoad(SRC,q);
+                vec4 cq=LoadSlot(q,(iters & 1));
                 if(isnan(cq.a) || isinf(cq.a)) continue;
                 float gk=((x==0) ? 2. : 1.)*((y==0) ? 2. : 1.);
                 float wn=pow(max(dot(np,safeNormalize(gq.rgb)),0.),8.);
@@ -351,10 +313,10 @@ float planeTol(float d){
                 ivec2 q=hp+ivec2(x,y)*(1<<iters);
                 if(!inBounds(q,hres)) continue;
 
-                vec4 gq=imageLoad(GeoCurrent,q);
+                vec4 gq=GeoCur(q);
                 if(gq.a<=0.) continue;
 
-                vec4 cq=imageLoad(SRC,q);
+                vec4 cq=LoadSlot(q,(iters & 1));
                 if(any(isnan(cq)) || any(isinf(cq))) continue;
 
                 vec3 nq=safeNormalize(gq.rgb);
@@ -376,13 +338,17 @@ float planeTol(float d){
         }
 
         vec4 res=vec4(sum / wsum,vsum / (wsum*wsum));
-        imageStore(DST,hp,res);
+        #if iters==0
+            vec2 momC;
+            float lenC;
+            LoadCurN(hp,momC,lenC);
+        #endif
+
+        StoreSlot(hp,(1-(iters & 1)),res);
 
         #if iters==0
-            vec4 mc=imageLoad(MomCurrent,hp);
-            imageStore(HistCol,hp,vec4(res.rgb,mc.b));
-            imageStore(HistMom,hp,vec4(mc.rg,0.,0.));
-            imageStore(HistGeo,hp,gc);
+            StoreHist(hp,res.rgb,lenC,momC);
+            ComGeo(hp);
         #endif
     }
 
@@ -395,21 +361,21 @@ float planeTol(float d){
         ivec2 hres=ivec2(RRES) >> 1;
         if(any(greaterThanEqual(hp,hres))) return;
 
-        vec4 gc=imageLoad(GeoCurrent,hp);
+        vec4 gc=GeoCur(hp);
         float dp=gc.a;
         if(dp<=0.){
-            imageStore(DST,hp,vec4(0.));
+            StoreSlot(hp,(1-(iters & 1)),vec4(0.));
             return;
         }
 
-        vec4 c0=imageLoad(SRC,hp);
+        vec4 c0=LoadSlot(hp,(iters & 1));
         if(any(isnan(c0)) || any(isinf(c0))) c0=vec4(0.);
 
         float lp=luminance(c0.rgb);
         float relStd=sqrt(max(c0.a,0.)) / (lp+.02);
         float strength=smoothstep(.02,.25,relStd);
         if(strength<.01){
-            imageStore(DST,hp,c0);
+            StoreSlot(hp,(1-(iters & 1)),c0);
             return;
         }
 
@@ -429,10 +395,10 @@ float planeTol(float d){
                 ivec2 q=hp+ivec2(x,y);
                 if(!inBounds(q,hres)) continue;
 
-                vec4 gq=imageLoad(GeoCurrent,q);
+                vec4 gq=GeoCur(q);
                 if(gq.a<=0.) continue;
 
-                vec4 cq=imageLoad(SRC,q);
+                vec4 cq=LoadSlot(q,(iters & 1));
                 if(any(isnan(cq)) || any(isinf(cq))) continue;
 
                 vec3 nq=safeNormalize(gq.rgb);
@@ -455,7 +421,7 @@ float planeTol(float d){
         }
 
         vec4 fil=vec4(sum / wsum,vsum / (wsum*wsum));
-        imageStore(DST,hp,mix(c0,fil,strength));
+        StoreSlot(hp,(1-(iters & 1)),mix(c0,fil,strength));
     }
 
 #endif

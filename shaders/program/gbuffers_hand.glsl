@@ -22,27 +22,31 @@
 
 #ifdef fsh
 
+    #include "/lib/surface/labpbr.glsl"
+
     in vec4 glcolor;
     in vec2 texcoord;
     in vec2 vlightmap;
     in vec3 vNormal;
 
-    /* RENDERTARGETS: 0,2,3,4 */
+    /* RENDERTARGETS: 0,3 */
     layout(location=0) out vec4 color;
-    layout(location=1) out vec4 color2;
-    layout(location=2) out vec4 color3;
-    layout(location=3) out vec4 color4;
+    layout(location=1) out uvec4 color1;
 
     void main(){
         vec4 albedo=texture(tex,texcoord,log2(RS))*glcolor;
         if(albedo.a<.1) discard;
 
+        Material m=materialDefault(toLinear(albedo.rgb));
+        vec4 spec=texture(specular,texcoord,log2(RS));
+        spec.g=textureLod(specular,texcoord,0.).g;
+        m=decodeLabPBR(spec,toLinear(albedo.rgb));
+        m.id=MAT_HAND;
+
         vec2 lm=clamp((vlightmap-.03125)/.9375,0.,1.);
 
         color=vec4(albedo.rgb,1.);
-        color2=vec4(0.);
-        color3=vec4(normalize(vNormal),1.);
-        color4=vec4(lm,1.,1.);
+        color1=gbPack(m,normalize(vNormal),lm,1.);
     }
 
 #endif

@@ -22,18 +22,15 @@
 
     /*
     const int colortex5Format=RGBA16F;
-    const int colortex6Format=R32F;
 
     const bool colortex5Clear=false;
-    const bool colortex6Clear=false;
     */
 
     in vec2 texcoord;
 
-    /* RENDERTARGETS:5,6 */
+    /* RENDERTARGETS:5 */
     layout(location=0) out vec4 color;
-    layout(location=1) out vec4 color1;
-
+    
     vec3 ptEmitterRadiance(uint qi){
         storeQD q=vxq.quads[qi];
         float area=max(length(cross(q.p0.xyz-q.p1.xyz,q.p2.xyz-q.p1.xyz)),1e-3);
@@ -182,7 +179,6 @@
 
     void main(){
         color=vec4(0.);
-        color1=vec4(0.);
 
         ivec2 hp=ivec2(gl_FragCoord.xy);
         ivec2 fullRes=ivec2(RRES);
@@ -195,10 +191,11 @@
         if(abs(texelFetch(colortex13,fp,0).w)>.5) depth=texelFetch(depthtex1,fp,0).r;
         if(depth>=1.||depth<.56) return;
 
-        vec4 nd=texelFetch(colortex3,fp,0);
+        uvec4 gbFp=texelFetch(colortex3,fp,0);
+        vec4 nd=gbPresent(gbFp)?vec4(gbUnpackNormal(gbFp),float(gbFp.z>>24)*(1./255.)):vec4(0.);
         if(dot(nd.xyz,nd.xyz)<.25) return;
 
-        float skyLm=texelFetch(colortex4,fp,0).g;
+        float skyLm=gbUnpackLM(gbFp).y;
         float skyF=pow(skyLm,SKYLIGHT_CURVE)*pow(.9667,4.-SKYLIGHT_CURVE);
 
         vec3 N=normalize(nd.xyz);
@@ -217,8 +214,7 @@
         }
         sum/=float(PT_SAMPLES);
 
-        color=vec4(sum,1.);
-        color1=vec4(length(worldPos),0.,0.,0.);
+        color=vec4(sum,length(worldPos));
     }
 
 #endif

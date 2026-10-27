@@ -26,6 +26,8 @@ option.CLOUD_THICKNESS=Thickness
 option.CLOUD_SCALE=Scale
 option.CLOUD_SUNLIGHTING=SunLight
 option.CLOUD_SKYLIGHTING=SkyLight
+option.CLOUD_WIND_SPEED=Wind Speed
+option.2.=Edge Erosion
 
 option.SKYLIGHT_CURVE=SkyLight Curve
 
@@ -48,7 +50,7 @@ value.PT_SAMPLES.2=§62
 value.PT_SAMPLES.3=§c3
 value.PT_SAMPLES.4=§44
 
-option.MAX_QUADS= Quads
+option.MAX_QUADS= Max Quads
 
 
 screen.Water=§l§3Water
@@ -80,7 +82,6 @@ screen.Puddle=Puddles Setting
 option.PUDDLES_ENABLED=Puddles
 option.PUDDLES_AMOUNT=Amount
 
-
 screen.VLi=§l§eVolumetric Light
 option.VOLUMETRIC_LIGHT=Volumetric Light
 option.VL_STEPS=Steps
@@ -99,7 +100,7 @@ screen.Taa=§cTemporal Anti-Aliasing Setting
 option.TAA_ENABLED=Temporal Anti-Aliasing
 option.TAA_BLENDWEIGHT=Taa Blendweight
 option.TAA_AGGRESSION=Aggression
-option.TAAU_ENABLED=Temporal Anti-Aliasing Upscaling
+option.TAAU_ENABLED=TAAU
 option.TAAU_RENDER_SCALE=TAAU Render Resolution
 value.TAAU_RENDER_SCALE.0.50=50%
 value.TAAU_RENDER_SCALE.0.60=60%

@@ -19,10 +19,6 @@
 
     /*
     const int colortex0Format=RGBA16F;
-    const int colortex9Format=RGBA16F;
-    const int colortex10Format=RGBA16F;
-    const int colortex11Format=RGBA16F;
-    const int colortex12Format=RGBA16F;
     */
 
     #include "/lib/camera/bloom.glsl"
@@ -57,7 +53,11 @@
     void main(){
         vec4 c=texture(colortex0,texcoord);
 
-        vec3 bloom=upsampleTent9(colortex10,texcoord,1./vec2(textureSize(colortex10,0)),1.);
+        #ifdef BLOOM
+            vec3 bloom=upsampleTent9(samplerBloom1,texcoord,1./vec2(textureSize(samplerBloom1,0)),1.);
+        #else
+            vec3 bloom=vec3(0.);
+        #endif
         vec3 hdr=c.rgb+bloom*(BLOOM_STRENGTH/.0625);
 
         float rainAmt=rainStrength*smoothstep(60.,200.,float(eyeBrightnessSmooth.y));
@@ -103,7 +103,7 @@
             }
             float ra=clamp(streak,0.,1.)*rainAmt;
             if(ra>.002){
-                float ev=texelFetch(colortex1,ivec2(0),0).r;
+                float ev=texelFetch(samplerExposure,ivec2(0),0).r;
                 float minLift=.16/(.0625*2.3*exp2(ev));
                 vec3 rad=max(hdr,0.)*1.6+vec3(minLift)*vec3(.85,.92,1.);
                 hdr=mix(hdr,rad,ra*.9);
@@ -111,7 +111,7 @@
             }
         }
 
-        hdr*=exp2(texelFetch(colortex1,ivec2(0),0).r);
+        hdr*=exp2(texelFetch(samplerExposure,ivec2(0),0).r);
 
         color=vec4(AgX(hdr),c.a);
     }

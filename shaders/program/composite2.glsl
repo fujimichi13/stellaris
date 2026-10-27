@@ -20,6 +20,10 @@
 
     in vec2 texcoord;
 
+    float unHandDepth(float d){
+        return (d<.56)?((d*2.-1.)/.125)*.5+.5:d;
+    }
+
     /* RENDERTARGETS:0,7 */
     layout(location=0) out vec4 color;
     layout(location=1) out vec4 color1;
@@ -30,8 +34,7 @@
         return clamp(mat3(1.60475,-.10208,-.00327,-.53108,1.10813,-.07276,-.07367,-.00605,1.07602)*v,0.,1.);
     }
 
-    layout(rgba16f) uniform image2D AtrA;
-    layout(rgba16f) uniform image2D GeoCurrent;
+    #include "/lib/camera/util.glsl"
 
     vec3 worldSpacePosition(vec2 uv,float depth){
         vec4 v=gbufferProjectionInverse*vec4(uv*2.-1.,depth*2.-1.,1.);
@@ -83,7 +86,8 @@
 
         vec3 gi=vec3(0.);
 
-        if(!skyPx&&depth0>=.56){
+        float depthSel=(abs(wn.w)>.5)?texelFetch(depthtex1,px,0).r:depth0;
+        if(!skyPx&&depthSel>=.56){
             ivec2 hres=ivec2(RRES)>>1;
             ivec2 jit=ivec2(frameCounter&1,(frameCounter>>1)&1);
 
@@ -91,7 +95,7 @@
             if(abs(wn.w)>.5) depth=texelFetch(depthtex1,px,0).r;
             vec3 P0=worldSpacePosition(texcoord,depth);
             float d0=length(P0);
-            vec3 n0=texelFetch(colortex3,px,0).xyz;
+            vec3 n0=gbUnpackNormal(texelFetch(colortex3,px,0));
             n0*=inversesqrt(max(dot(n0,n0),1e-8));
 
             vec2 pos=(vec2(px)+.5)*.5-.5;
@@ -108,10 +112,10 @@
                     ivec2 q=bq+ivec2(x,y);
                     if(any(lessThan(q,ivec2(0)))||any(greaterThanEqual(q,hres))) continue;
 
-                    vec4 gq=imageLoad(GeoCurrent,q);
+                    vec4 gq=GeoHist(q);
                     if(gq.a<=0.) continue;
 
-                    vec3 gcol=imageLoad(AtrA,q).rgb;
+                    vec3 gcol=OutputD(q);
                     if(any(isnan(gcol))||any(isinf(gcol))) continue;
 
                     vec3 nq=gq.rgb*inversesqrt(max(dot(gq.rgb,gq.rgb),1e-8));
@@ -204,14 +208,14 @@
 
             float code=floor(-wn.w);
             float skyLm=fract(-wn.w)/.99;
-            float thick=(code<1.5)?.125:((code<2.5)?1.:.5);
+            float thick=(code<1.5)?.125:((code<2.5)?1.:((code<3.5)?.5:.3));
 
             vec3 N=normalize(wn.xyz);
-            vec3 Pg=worldSpacePosition(texcoord,depth0);
+            vec3 Pg=worldSpacePosition(texcoord,unHandDepth(depth0));
             vec3 D=normalize(Pg);
 
             float depth1=texelFetch(depthtex1,px,0).r;
-            vec3 Q0=(depth1<1.)?worldSpacePosition(texcoord,depth1):Pg+D*64.;
+            vec3 Q0=(depth1<1.)?worldSpacePosition(texcoord,unHandDepth(depth1)):Pg+D*64.;
 
             vec2 uvR=texcoord;
             vec3 T=refract(D,N,1./1.52);

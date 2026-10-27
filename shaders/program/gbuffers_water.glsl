@@ -17,6 +17,7 @@
     out vec3 vWorldPos;
     out float iswater;
     out float isglass;
+    flat out float vGlass;
 
     void main(){
         glcolor=gl_Color;
@@ -24,7 +25,14 @@
         vlightmap=(gl_TextureMatrix[1]*gl_MultiTexCoord1).xy;
 
         iswater=(abs(mc_Entity.x-1.)<.5)?1.:0.;
-        isglass=(abs(mc_Entity.x-3.)<.5)?1.:((abs(mc_Entity.x-2.)<.5)?2.:3.);
+
+        int gi=int(mc_Entity.x+.5);
+        float gk=0.;
+        if(gi>=200&&gi<218) gk=1.;
+        else if(gi>=100&&gi<118) gk=2.;
+        int gn=(gk>0.)?(gi%100):-1;
+        vGlass=-1.;
+        isglass=(gk>.5)?((gk>1.5)?2.:1.):((abs(mc_Entity.x-3.)<.5)?1.:((abs(mc_Entity.x-2.)<.5)?2.:3.));
 
         vNormal=normalize(mat3(gbufferModelViewInverse)*(gl_NormalMatrix*gl_Normal));
         vec3 T=normalize(mat3(gbufferModelViewInverse)*(gl_NormalMatrix*at_tangent.xyz));
@@ -42,6 +50,7 @@
 
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/surface/brdf.glsl"
+    #include "/lib/surface/labpbr.glsl"
     #include "/lib/water/water.glsl"
 
     /*
@@ -58,6 +67,7 @@
     in vec3 vWorldPos;
     in float iswater;
     in float isglass;
+    flat in float vGlass;
 
     /* RENDERTARGETS: 13,14 */
     layout(location=0) out vec4 color;
@@ -67,8 +77,15 @@
         vec4 albedo=texture(tex,texcoord)*glcolor;
         vec2 lm=saturate((vlightmap-.03125)/.9375);
 
+        bool glass=vGlass>-.5;
+        if(glass){
+            vec4 bl=textureLod(tex,texcoord,2.5);
+            if(vGlass<.5) albedo=vec4(1.,1.,1.,.08);
+            else albedo=vec4(bl.rgb,(vGlass<1.5)?.9:bl.a);
+        }
+
         if(iswater<.5){
-            if(albedo.a<.05) discard;
+            if(!glass&&albedo.a<.05) discard;
 
             float nao;
             vec3 Ng0=decodeLabPBRNormal(texture(normals,texcoord,log2(RS)),mat3(normalize(vTangent),normalize(vBitangent),normalize(vNormal)),nao);

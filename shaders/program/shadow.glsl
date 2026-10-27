@@ -2,6 +2,8 @@
 
 #ifdef vsh
 
+    #include "/settings.glsl"
+
     in vec4 mc_Entity;
 
     uniform mat4 shadowModelViewInverse;
@@ -12,6 +14,7 @@
     out vec3 vxPos;
     out vec3 vxNormal;
     out float vxBlockId;
+    out vec4 vxFlat;
 
     void main(){
         glcolor=gl_Color;
@@ -21,8 +24,19 @@
         vec4 viewPos=gl_ModelViewMatrix*gl_Vertex;
         vxPos=(shadowModelViewInverse*viewPos).xyz;
         vxNormal=normalize(mat3(shadowModelViewInverse)*snormal);
-        vxBlockId=mc_Entity.x;
 
+        int gi=int(mc_Entity.x+.5);
+        float gk=0.;
+        if(gi>=200&&gi<218) gk=1.;
+        else if(gi>=100&&gi<118) gk=2.;
+        vxBlockId=(gk>1.5)?2.:((gk>.5)?3.:mc_Entity.x);
+
+        vxFlat=vec4(0.,0.,0.,-1.);
+        if(gk>0.){
+            int gn=gi%100;
+            vxFlat=(gn==0)?vec4(0.):vec4(1.,0.,0.,-1.);
+        }
+        
         gl_Position=gl_ProjectionMatrix*viewPos;
     }
 
@@ -43,9 +57,11 @@
     in vec3 vxPos[];
     in vec3 vxNormal[];
     in float vxBlockId[];
+    in vec4 vxFlat[];
 
     out vec4 glcolor1;
     out vec2 texcoord1;
+    flat out vec4 flat1;
 
     uniform sampler2D samplerWarpXY;
     uniform sampler2D tex;
@@ -132,6 +148,7 @@
             vec2 uvc=rect?(uv0+uv2)*.5:(uv0+uv1+uv2) / 3.;
             vec4 ts=textureLod(tex,uvc,2.);
             vec4 albedo=vec4(ts.rgb*tint.rgb,ts.a*tint.a);
+            if(vxFlat[0].a>=0.) albedo=vxFlat[0];
 
             storeQD q;
             q.p0=vec4(a,uintBitsToFloat(packUnorm4x8(tint)));
@@ -219,6 +236,7 @@
                         gl_Position=vec4(rtwsmWarp(p.xy),p.z,p.w);
                         glcolor1=glcolor[0]*w.x+glcolor[1]*w.y+glcolor[2]*w.z;
                         texcoord1=texcoord[0]*w.x+texcoord[1]*w.y+texcoord[2]*w.z;
+                        flat1=vxFlat[0];
                         EmitVertex();
                     }
                     EndPrimitive();
@@ -235,6 +253,7 @@
 
     in vec4 glcolor1;
     in vec2 texcoord1;
+    flat in vec4 flat1;
 
     /* RENDERTARGETS: 0 */
     layout(location=0) out vec4 color;
@@ -243,8 +262,9 @@
     const float shadowDistance=192.0;
 
     void main(){
-        vec4 albedo=texture(tex,texcoord1)*glcolor1;
-
+        vec4 albedo=(flat1.x>.5)?textureLod(tex,texcoord1,2.5):texture(tex,texcoord1)*glcolor1;
+        if(flat1.a>=0.) albedo=flat1;
+        
         if(albedo.a<.1){
             discard;
         }
