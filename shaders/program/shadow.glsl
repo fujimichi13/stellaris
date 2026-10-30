@@ -48,6 +48,7 @@
     #include "/settings.glsl"
     #include "/lib/utility/math.glsl"
     #include "/lib/voxel/voxel.glsl"
+    #include "/lib/rtwsm/getWarp.glsl"
 
     layout(triangles) in;
     layout(triangle_strip,max_vertices=48) out;
@@ -69,21 +70,12 @@
     uniform vec3 cameraPosition;
     uniform int entityId;
 
-    float rtwsmWarp1D(sampler2D tex,float u,int row){
-        if(u<=0.||u>=1.) return u;
-        float t=u*float(256);
-        int i=min(int(t),256-1);
-        float f=t-float(i);
-        float hi=texelFetch(tex,ivec2(i,row),0).r;
-        if(hi<=0.) return u;
-        float lo=(i==0)?0.:texelFetch(tex,ivec2(i-1,row),0).r;
-        return mix(lo,hi,f);
-    }
-
-    vec2 rtwsmWarp(vec2 clipXY){
-        vec2 uv=clipXY*.5+.5;
-        vec2 w=vec2(rtwsmWarp1D(samplerWarpXY,uv.x,0),rtwsmWarp1D(samplerWarpXY,uv.y,1));
-        return w*2.-1.;
+    int rtwsmTessLevel(){
+        vec2 w0=rtwsmWarpClip(samplerWarpXY,gl_in[0].gl_Position.xy);
+        vec2 w1=rtwsmWarpClip(samplerWarpXY,gl_in[1].gl_Position.xy);
+        vec2 w2=rtwsmWarpClip(samplerWarpXY,gl_in[2].gl_Position.xy);
+        float L=max(length(w1-w0),max(length(w2-w1),length(w0-w2)))*.5;
+        return clamp(int(ceil(L/.025)),1,4);
     }
 
     void main(){
@@ -178,7 +170,7 @@
             uint lightId=uint(max(vxBlockId[0],0.));
             if(lightId >= 10u&&lightId<=13u){
                 uint li=atomicAdd(vxl.lightCount,1u);
-                if(li<uint(16384)){
+                if(li<uint(MAX_LIGHTS)){
                     vec3 center=rect?(a+c)*.5:(a+b+c) / 3.;
                     int cell=lightCell(cellCoord(center));
                     if(cell >= 0){
@@ -202,7 +194,15 @@
                         lt.n =vec4(n,0.);
                         vxl.lights[li]=lt;
                         uint slot=atomicAdd(vxl.cellCount[cell],1u);
-                        if(slot<uint(16)) vxl.cellSlots[cell*16+int(slot)]=li;
+                        if(slot<uint(LIGHT_SLOTS)){
+                            vxl.cellSlots[cell*LIGHT_SLOTS+int(slot)]=li;
+                        }else{
+                            uint h=li*747796405u+2891336453u;
+                            h=((h >> ((h >> 28u)+4u))^h)*277803737u;
+                            h=(h >> 22u)^h;
+                            uint r=h % (slot+1u);
+                            if(r<uint(LIGHT_SLOTS)) vxl.cellSlots[cell*LIGHT_SLOTS+int(r)]=li;
+                        }
                     }
                 }
             }
@@ -217,24 +217,26 @@
             if(iz1>vxh.vMxZ) atomicMax(vxh.vMxZ,iz1);
         }while(false);
 
-        for(int i=0;i<4;i++){
-            for(int j=0;j<4-i;j++){
+        int n=rtwsmTessLevel();
+        float fn=float(n);
+        for(int i=0;i<n;i++){
+            for(int j=0;j<n-i;j++){
                 for(int t=0;t<2;t++){
-                    if(t==1&&i+j>2) break;
+                    if(t==1&&i+j>n-2) break;
                     vec3 b[3];
                     if(t==0){
-                        b[0]=vec3(4-i-j,i,j);
-                        b[1]=vec3(3-i-j,i+1,j);
-                        b[2]=vec3(3-i-j,i,j+1);
+                        b[0]=vec3(n-i-j,i,j);
+                        b[1]=vec3(n-i-j-1,i+1,j);
+                        b[2]=vec3(n-i-j-1,i,j+1);
                     }else{
-                        b[0]=vec3(3-i-j,i+1,j);
-                        b[1]=vec3(2-i-j,i+1,j+1);
-                        b[2]=vec3(3-i-j,i,j+1);
+                        b[0]=vec3(n-i-j-1,i+1,j);
+                        b[1]=vec3(n-i-j-2,i+1,j+1);
+                        b[2]=vec3(n-i-j-1,i,j+1);
                     }
                     for(int k=0;k<3;k++){
-                        vec3 w=b[k]/4.;
+                        vec3 w=b[k]/fn;
                         vec4 p=gl_in[0].gl_Position*w.x+gl_in[1].gl_Position*w.y+gl_in[2].gl_Position*w.z;
-                        gl_Position=vec4(rtwsmWarp(p.xy),p.z,p.w);
+                        gl_Position=vec4(rtwsmWarpClip(samplerWarpXY,p.xy),p.z,p.w);
                         glcolor1=glcolor[0]*w.x+glcolor[1]*w.y+glcolor[2]*w.z;
                         texcoord1=texcoord[0]*w.x+texcoord[1]*w.y+texcoord[2]*w.z;
                         flat1=vxFlat[0];

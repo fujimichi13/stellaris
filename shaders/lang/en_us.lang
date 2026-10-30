@@ -1,20 +1,20 @@
 option.INFO=Stellaris
 value.INFO.ST= by Fujimichi
-value.INFO.LS= 102326
+value.INFO.LS= 103126
 
-option.VERSION=v0.1.1
+option.VERSION=v0.1.3
 value.VERSION.ST=Alpha
-value.VERSION.LS=v011
+value.VERSION.LS=v013
 
 
 screen.Atmosphere=§l§bAtmosphere
 
 screen.Clouds=§l§fClouds Setting
 
-screen.VL=§fVolumetric Clouds Setting
+screen.VL=§fVolumetric Clouds
 
 option.VOLUMETRIC_CLOUDS= Volumetric Clouds
-option.CLOUD_RAY_STEPS=Steps
+option.CLOUD_RAY_STEPS=Quality
 option.CLOUD_UPSCALING=Upscaling (this sucks for now.)
 value.CLOUD_UPSCALING.0=§cOff
 value.CLOUD_UPSCALING.2=§a2x
@@ -112,3 +112,4 @@ value.TAAU_RENDER_SCALE.0.1.00=100%
 screen.Exposure=Exposure Setting
 option.EXPOSURE_MIN=Min
 option.EXPOSURE_MAX=Max
+option.NIGHT_BRIGHTNESS=Night Brightness

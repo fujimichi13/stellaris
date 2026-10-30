@@ -70,7 +70,7 @@
 
         vec3 skyRadiance(vec3 d){
             float t=max(asin(clamp(d.y,-1.,1.)),0.);
-            vec3 s=texture(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,sqrt(t*.63661977)*.5+.5)).rgb;
+            vec3 s=textureLod(samplerSky,vec2(atan(d.z,d.x)*.15915494+.5,sqrt(t*.63661977)*.5+.5),0.).rgb;
             return s*(1.-.6*smoothstep(0.,-.4,d.y));
         }
 
@@ -92,7 +92,7 @@
         }
 
         vec3 lightColor(vec3 S){
-            return sunLight(S,eyeAlt(cameraPosition.y))+moonLight(S);
+            return sunLight(S,atmoAlt(cameraPosition.y))+moonLight(S);
         }
 
     #endif

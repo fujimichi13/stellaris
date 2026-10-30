@@ -17,4 +17,8 @@
         return max(y,1.)*.001+max(y-256.,0.)*.02;
     }
 
+    float atmoAlt(float y){
+        return max(y,1.)*.001+max(y-256.,0.)*.002;
+    }
+
 #endif

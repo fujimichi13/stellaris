@@ -79,14 +79,17 @@
         return vec3(decode(vxh.vMxX),decode(vxh.vMxY),decode(vxh.vMxZ));
     }
 
+    #define LIGHT_SLOTS 64
+    #define MAX_LIGHTS 32768
+
     layout(std430,binding=4) coherent buffer vLightB {
         uint lightCount;
         uint lightPad0;
         uint lightPad1;
         uint lightPad2;
         uint cellCount[16384];
-        uint cellSlots[16384*16];
-        vLight lights[16384];
+        uint cellSlots[16384*LIGHT_SLOTS];
+        vLight lights[MAX_LIGHTS];
     } vxl;
 
     layout(std430,binding=1) buffer storeQDB {
@@ -117,6 +120,34 @@
     vec2 quadUV(in storeQD q,int tri,vec2 bc){
         if(tri==0) return q.uv01.xy*(1.-bc.x-bc.y)+q.uv01.zw*bc.x+q.uv23.xy*bc.y;
         return q.uv01.xy*(1.-bc.x-bc.y)+q.uv23.xy*bc.x+q.uv23.zw*bc.y;
+    }
+
+
+    uint quadTexel(in storeQD q,vec2 st){
+        uint m=floatBitsToUint(q.nrm.w);
+        int gx=max(int(m & 15u),1);
+        int gy=max(int((m >> 4) & 15u),1);
+        int cx=clamp(int(st.x*float(gx)),0,gx-1);
+        int cy=clamp(int(st.y*float(gy)),0,gy-1);
+        int ti=cy*8+cx;
+        uint tw=q.tx[(ti>>1)>>2][(ti>>1)&3];
+        return (tw >> uint(16*(ti&1))) & 0xFFFFu;
+    }
+
+    bool quadHasHoles(in storeQD q){
+        return (floatBitsToUint(q.nrm.w) & 256u)!=0u;
+    }
+
+    bool quadTexelDead(in storeQD q,vec2 st){
+        return quadTexel(q,st)==0xF81Fu;
+    }
+
+    vec2 triST(int tri,vec2 bc){
+        return (tri==0)?vec2(1.-bc.x-bc.y,bc.y):vec2(1.-bc.x,bc.x+bc.y);
+    }
+
+    vec3 quadTexelRGB(uint tw){
+        return vec3(float(tw >> 11),float((tw >> 5) & 63u),float(tw & 31u))/vec3(31.,63.,31.);
     }
 
     ivec3 cellCoord(vec3 p){
@@ -286,6 +317,7 @@
         #ifdef VOXELIZE_PLAYER
         if(bid==20u) return playerSkin(quadUV(q,tri,bc)).a>.5;
         #endif
+        if(quadHasHoles(q)) return !quadTexelDead(q,triST(tri,bc));
         return unpackUnorm4x8(floatBitsToUint(q.p2.w)).a>0.5;
     }
 
@@ -355,6 +387,7 @@
             T *= gtint(a.rgb);
             return true;
         }
+        if(quadHasHoles(q)) return quadTexelDead(q,triST(tri,bc));
         return a.a<=.5;
     }
 
@@ -407,7 +440,11 @@
             storeQD q=vxq.quads[h.quad];
             bid=floatBitsToUint(q.p1.w);
             alb=unpackUnorm4x8(floatBitsToUint(q.p2.w));
-            bool skip=(bid >= 1u&&bid<=3u) || (rand()>alb.a);
+            bool skip=(bid >= 1u&&bid<=3u);
+            if(!skip){
+                if(quadHasHoles(q)) skip=quadTexelDead(q,h.st);
+                else skip=(rand()>alb.a);
+            }
             #ifdef VOXELIZE_PLAYER
                 if(bid==20u){
                     alb=playerSkin(h.uv);

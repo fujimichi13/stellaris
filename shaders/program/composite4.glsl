@@ -152,7 +152,7 @@
                     vec3 skyEnv=skyRadiance(R);
                     #ifdef VOLUMETRIC_CLOUDS
                         if(m.roughness<.4&&skyVis>.01){
-                            vec4 cl=volumetricClouds(R,CLOUD_REFLECTION_STEPS);
+                            vec4 cl=volumetricClouds(R,12,2,1,101u);
                             skyEnv=mix(skyEnv,skyEnv*(1.-cl.a)+cl.rgb,1.-smoothstep(.2,.4,m.roughness));
                         }
                     #endif
@@ -180,7 +180,7 @@
             vec3 skyRefl=skyRadiance(R);
             #ifdef VOLUMETRIC_CLOUDS
                 if(hit.a<.999&&skyVis>.01){
-                    vec4 cl=volumetricClouds(R,CLOUD_REFLECTION_STEPS);
+                    vec4 cl=volumetricClouds(R,12,2,1,101u);
                     skyRefl=skyRefl*(1.-cl.a)+cl.rgb;
                 }
             #endif
@@ -220,7 +220,7 @@
             vec3 skyRefl=skyRadiance(R);
             #ifdef VOLUMETRIC_CLOUDS
                 if(hit.a<.999&&skyVis>.01){
-                    vec4 cl=volumetricClouds(R,CLOUD_REFLECTION_STEPS);
+                    vec4 cl=volumetricClouds(R,12,2,1,101u);
                     skyRefl=skyRefl*(1.-cl.a)+cl.rgb;
                 }
             #endif
@@ -327,19 +327,7 @@
                     vec4 sc=shadowProjection*(shadowModelView*vec4(p,1.));
                     vec3 ndc=sc.xyz/sc.w;
                     vec2 suv=ndc.xy*.5+.5;
-                    vec2 wuv=suv;
-                    if(suv.x>0.&&suv.x<1.){
-                        float tx=suv.x*256.;
-                        int ix=min(int(tx),255);
-                        float hx=texelFetch(samplerWarpXY,ivec2(ix,0),0).r;
-                        if(hx>0.) wuv.x=mix((ix==0)?0.:texelFetch(samplerWarpXY,ivec2(ix-1,0),0).r,hx,tx-float(ix));
-                    }
-                    if(suv.y>0.&&suv.y<1.){
-                        float ty=suv.y*256.;
-                        int iy=min(int(ty),255);
-                        float hy=texelFetch(samplerWarpXY,ivec2(iy,1),0).r;
-                        if(hy>0.) wuv.y=mix((iy==0)?0.:texelFetch(samplerWarpXY,ivec2(iy-1,1),0).r,hy,ty-float(iy));
-                    }
+                    vec2 wuv=rtwsmWarpUV(samplerWarpXY,suv);
 
                     float vis=1.;
                     float sz=ndc.z*.5+.5;

@@ -42,12 +42,6 @@
         return vec2(saturate(t*m.tall*1.2),t);
     }
 
-    float cuProfile(float h,float top){
-        float bottom=smoothstep(0.,.07,h);
-        float dome=1.-smoothstep(top*.45,top,h);
-        return bottom*dome;
-    }
-
     float cuDensity(vec3 wp,float h,cuweather m,float dist,int quality){
         if(h<=0.||h>=1.) return 0.;
 
@@ -97,155 +91,215 @@
         return d*d*(3.-2.*d);
     }
 
-    float cuPhase(float c,float k){
-        return mix(henyeyGreenstein(c,-.30*k),henyeyGreenstein(c,.80*k),.55)*4.*PI;
+    float cloudPR;
+    float cloudBottom;
+    float cloudDepth;
+    float cloudSigma;
+
+    float cloudHeight(vec3 p){
+        return (curvedHeight(p,cameraPosition.xz,cloudPR)-cloudBottom)/cloudDepth;
     }
 
-    float cuSunScatter(float od,float c){
-        float sum=0.,wsum=0.,a=1.,b=1.35,k=1.;
-        for(int i=0;i<4;i++){
-            sum+=a*exp(-od*b)*cuPhase(c,k);
-            wsum+=a;
-            a*=.5; b*=.42; k*=.55;
+    float cloudDensityAt(vec3 p,float h,int q){
+        if(h<=0.||h>=1.) return 0.;
+        cuweather m=cuweatherAt(p.xz);
+        return cuDensity(p,h,m,length(p-cameraPosition),q);
+    }
+
+    float freeFlight(){
+        return -log(max(1.-rand(),1e-6))/cloudSigma;
+    }
+
+    float cloudPhase(float c){
+        return mix(henyeyGreenstein(c,-.30),henyeyGreenstein(c,.80),.55);
+    }
+
+    float hgNorm(float c,float g){
+        float d=1.+g*g-2.*g*c;
+        return (1.-g*g)/(12.566370614*d*sqrt(max(d,1e-6)));
+    }
+
+    float cloudPhasePdf(float c){
+        return mix(hgNorm(c,-.30),hgNorm(c,.80),.55);
+    }
+
+    float skyNeePdf(vec3 w){
+        return ((w.y>0.)?.75:1.-.75)/TAU;
+    }
+
+    float cloudTransmittance(vec3 o,vec3 dir,int maxSteps,out int side){
+        float T=1.;
+        float s=0.;
+        side=1;
+        for(int i=0;i<maxSteps;i++){
+            float ds=freeFlight();
+            float fl=5.+.35*s;
+            bool exact=ds>=fl;
+            float x=s+(exact?ds:fl*rand());
+
+            vec3 p=o+dir*x;
+            float h=cloudHeight(p);
+            if(h>=1.) return T;
+            if(h<=0.){
+                side=2;
+                return T;
+            }
+
+            float d=cloudDensityAt(p,h,1);
+            T*=exact?(1.-d):exp(-cloudSigma*d*fl);
+
+            if(T<.1){
+                if(rand()*.1>T) return 0.;
+                T=.1;
+            }
+            s+=exact?ds:fl;
         }
-        return sum/wsum;
+        return T;
     }
 
-    float cuIsoScatter(float od){
-        float sum=0.,wsum=0.,a=1.,b=1.;
-        for(int i=0;i<4;i++){
-            sum+=a*exp(-od*b);
-            wsum+=a;
-            a*=.5; b*=.5;
-        }
-        return sum/wsum;
+    float sunTransmittance(vec3 o,vec3 L){
+        int side;
+        return cloudTransmittance(o,L,20,side);
     }
 
-    float cuSunOD(vec3 wp,vec3 sd,cuweather m,float dither,float dist){
-        float u=max(max(CLOUD_THICKNESS*(1.+.25*saturate(cloudRain)),1.)*.03,12.);
-        float s0=.12*CLOUD_DENSITY/max(CLOUD_SCALE,.5);
+    vec4 volumetricClouds(vec3 rd,int steps,int bounces,int samples,uint salt){
+        float rw=saturate(cloudRain);
+        cloudPR=max(cameraPosition.y,1.)*R/eyeAlt(cameraPosition.y);
+        cloudBottom=CLOUD_ALTITUDE*(1.-.3*rw);
+        cloudDepth=max(CLOUD_THICKNESS*(1.+.25*rw),1.);
+        cloudSigma=max(.12*CLOUD_DENSITY/max(CLOUD_SCALE,.5)*(1.+.5*rw),1e-4);
 
-        vec3 tA=normalize(cross(sd,abs(sd.y)<.99?vec3(0.,1.,0.):vec3(1.,0.,0.)));
-        vec3 tB=cross(sd,tA);
-
-        float od=0.,t=0.;
-        for(int i=0;i<6;i++){
-            float seg=u*exp2(float(i));
-            float a=6.2831853*fract(dither+float(i)*.381966);
-            vec3 off=(tA*cos(a)+tB*sin(a))*seg*.18;
-            vec3 p=wp+sd*(t+seg*(.2+.6*dither))+off;
-            float h=(curvedHeight(p,cameraPosition.xz,max(cameraPosition.y,1.)*R/eyeAlt(cameraPosition.y))-CLOUD_ALTITUDE*(1.-.3*saturate(cloudRain)))/max(CLOUD_THICKNESS*(1.+.25*saturate(cloudRain)),1.);
-            if((h>1.&&sd.y>0.)||(h<0.&&sd.y<0.)) break;
-            od+=cuDensity(p,h,m,dist,i<3?1:0)*s0*seg;
-            if(od>7.) break;
-            t+=seg;
-        }
-        return od;
-    }
-
-    float cuSkyOD(vec3 wp,float h,cuweather m,float dither){
-        float th=max(CLOUD_THICKNESS*(1.+.25*saturate(cloudRain)),1.);
-        float len=max((1.-h)*th,40.);
-        float s0=.12*CLOUD_DENSITY/max(CLOUD_SCALE,.5);
-        const float fr[3]=float[3](.18,.5,1.);
-        float od=0.,prev=0.;
-        for(int i=0;i<3;i++){
-            float dd=len*fr[i];
-            float a=6.2831853*fract(dither+float(i)*.381966);
-            vec3 dir=normalize(vec3(.55*cos(a),1.,.55*sin(a)));
-            vec3 p=wp+dir*(dd*(.6+.4*dither));
-            od+=cuDensity(p,(curvedHeight(p,cameraPosition.xz,max(cameraPosition.y,1.)*R/eyeAlt(cameraPosition.y))-CLOUD_ALTITUDE*(1.-.3*saturate(cloudRain)))/max(CLOUD_THICKNESS*(1.+.25*saturate(cloudRain)),1.),m,1e5,0)*s0*(dd-prev);
-            prev=dd;
-        }
-        return od;
-    }
-
-    vec4 cloudRayMarch(vec3 rd,vec3 sd,vec3 amb,vec3 sunCol,int steps){
-        float base=CLOUD_ALTITUDE*(1.-.3*saturate(cloudRain));
-        float th=max(CLOUD_THICKNESS*(1.+.25*saturate(cloudRain)),1.);
         float tIn,tOut;
-        if(!shellIntersect(cameraPosition.y,rd,base,base+th,max(cameraPosition.y,1.)*R/eyeAlt(cameraPosition.y),tIn,tOut)) return vec4(0.);
+        if(!shellIntersect(cameraPosition.y,rd,cloudBottom,cloudBottom+cloudDepth,cloudPR,tIn,tOut)) return vec4(0.);
         tOut=min(tOut,tIn+60000.);
         if(tOut<=tIn) return vec4(0.);
 
-        float toff=fract(float(frameCounter%32)*.61803398875);
-        float dither=fract(ign(gl_FragCoord.xy)+toff);
-        float dither2=fract(ign(gl_FragCoord.xy+vec2(5.3,11.7))+toff*1.7);
+        vec3 L=lightDirection();
+        vec3 E=lightColor(sunDirection());
+        vec3 amb=skyAmbient();
+        vec3 ground=.25*(E*(max(L.y,0.)*.31830989)+amb);
+        float clampL=6.*luminance(E)+8.*luminance(amb)+1.;
+        vec3 haze=skyRadiance(rd);
+        float altF=exp(-max(cameraPosition.y-cloudBottom,0.)*1.2e-4);
+        float f0=.5*(tOut-tIn)/float(steps);
 
-        float rw=saturate(cloudRain);
-        sunCol*=1.-.6*rw;
-        amb*=1.-.3*rw;
+        uint saved=state;
+        state=pcg(uint(gl_FragCoord.x)+pcg(uint(gl_FragCoord.y)+pcg(uint(frameCounter)+salt)));
 
-        float LdotV=dot(rd,sd);
-        float s0=.12*CLOUD_DENSITY/max(CLOUD_SCALE,.5);
-        float invSteps=1./float(steps);
+        vec4 acc=vec4(0.);
+        for(int n=0;n<samples;n++){
+            float tHit=tIn;
+            bool found=false;
+            float t=tIn;
+            for(int i=0;i<steps;i++){
+                float ds=freeFlight();
+                float fl=f0+.04*(t-tIn);
+                bool exact=ds>=fl;
+                float x=t+(exact?ds:fl*rand());
+                if(x>=tOut) break;
 
-        vec3 acc=vec3(0.);
-        float T=1.;
-        float dSum=0.,wSum=0.;
+                vec3 q=cameraPosition+rd*x;
+                float d=cloudDensityAt(q,cloudHeight(q),2);
+                bool hit=exact?(rand()<d):(rand()<1.-exp(-cloudSigma*d*fl));
+                if(hit){
+                    tHit=x;
+                    found=true;
+                    break;
+                }
+                t+=exact?ds:fl;
+            }
+            if(!found) continue;
 
-        for(int j=0;j<steps;j++){
-            if(T<.02) break;
+            vec3 p=cameraPosition+rd*tHit;
+            vec3 w=rd;
+            vec3 Lo=vec3(0.);
 
-            float n0=float(j)*invSteps;
-            float n1=float(j+1)*invSteps;
-            float dt=mix(tIn,tOut,n1*n1)-mix(tIn,tOut,n0*n0);
+            for(int b=0;b<=bounces;b++){
+                bool last=(b==bounces);
 
-            float ns=(float(j)+dither)*invSteps;
-            float t=mix(tIn,tOut,ns*ns);
-            vec3 wp=cameraPosition+rd*t;
+                if(L.y>0.){
+                    Lo+=E*(cloudPhase(dot(w,L))*sunTransmittance(p,L)*CLOUD_SUNLIGHTING);
+                }
 
-            float h=(curvedHeight(wp,cameraPosition.xz,max(cameraPosition.y,1.)*R/eyeAlt(cameraPosition.y))-CLOUD_ALTITUDE*(1.-.3*saturate(cloudRain)))/max(CLOUD_THICKNESS*(1.+.25*saturate(cloudRain)),1.);
-            cuweather m=cuweatherAt(wp.xz);
-            float dens=cuDensity(wp,h,m,t,2);
-            if(dens<.004) continue;
+                float upF=(rand()<.75)?1.:-1.;
+                float ny=upF*rand();
+                float nr=sqrt(max(1.-ny*ny,0.));
+                float nphi=TAU*rand();
+                vec3 wn=vec3(nr*cos(nphi),ny,nr*sin(nphi));
 
-            float sigma=dens*s0;
-            float tr=exp(-sigma*dt);
+                float pdfN=skyNeePdf(wn);
+                float pdfP=cloudPhasePdf(dot(w,wn));
 
-            float odSun=cuSunOD(wp,sd,m,dither2,t);
-            float powder=mix(1.-exp(-dens*dt*s0*6.-dens*2.),1.,saturate(LdotV*.5+.5)*.5);
-            vec3 sun=sunCol*cuSunScatter(odSun,LdotV)*mix(1.,powder,.5)*CLOUD_SUNLIGHTING;
+                int nside;
+                float Tn=cloudTransmittance(p,wn,12,nside);
+                if(Tn>0.){
+                    vec3 envL=(nside==1)?skyRadiance(wn):ground;
+                    float mwN=last?1.:(pdfN*pdfN)/(pdfN*pdfN+pdfP*pdfP);
+                    Lo+=envL*(Tn*pdfP/pdfN*mwN*CLOUD_SKYLIGHTING);
+                }
 
-            float odUp=cuSkyOD(wp,h,m,dither2);
-            float skyOcc=cuIsoScatter(odUp)*mix(.30,1.,smoothstep(0.,.7,h));
-            vec3 sky=(amb*skyOcc+sunCol*(max(sd.y,0.)*.2*sq(1.-h)))*CLOUD_SKYLIGHTING;
+                if(last) break;
 
-            float thin=1.-smoothstep(0.,.5,dens);
-            vec3 silver=sunCol*pow(saturate(LdotV),32.)*thin*exp(-odSun*.4)*(1.-rw)*1.5;
+                float g=(rand()<.55)?.80:-.30;
+                float k=(1.-g*g)/(1.-g+2.*g*rand());
+                float c=clamp((1.+g*g-k*k)/(2.*g),-1.,1.);
+                float phi=TAU*rand();
+                vec3 bt,bb;
+                basis(w,bt,bb);
+                w=normalize(w*c+(bt*cos(phi)+bb*sin(phi))*sqrt(max(1.-c*c,0.)));
+                float pdfPrev=cloudPhasePdf(c);
 
-            vec3 col=sun+sky+silver;
-            col*=mix(1.,.5+.5*smoothstep(0.,.6,h),rw);
-            col=mix(col,vec3(luminance(col)),.4*rw);
+                int r=1;
+                vec3 pn=p;
+                float s=0.;
+                for(int i=0;i<24;i++){
+                    float ds=freeFlight();
+                    float fl=4.+.3*s;
+                    bool exact=ds>=fl;
+                    float x=s+(exact?ds:fl*rand());
 
-            float cMax=8.*(sunCol.r+sunCol.g+sunCol.b+amb.r+amb.g+amb.b)+1.;
-            col=clamp(col,vec3(0.),vec3(cMax));
-            if(col!=col) col=vec3(0.);
+                    vec3 q=p+w*x;
+                    float h=cloudHeight(q);
+                    if(h>=1.){
+                        r=1;
+                        break;
+                    }
+                    if(h<=0.){
+                        r=2;
+                        break;
+                    }
 
-            float w=(1.-tr)*T;
-            acc+=col*w;
-            dSum+=t*w;
-            wSum+=w;
-            T*=tr;
+                    float d=cloudDensityAt(q,h,1);
+                    bool hit=exact?(rand()<d):(rand()<1.-exp(-cloudSigma*d*fl));
+                    if(hit){
+                        pn=q;
+                        r=0;
+                        break;
+                    }
+                    s+=exact?ds:fl;
+                }
+
+                if(r==0){
+                    p=pn;
+                    continue;
+                }
+
+                float mwP=1.;
+                float pdfN2=skyNeePdf(w);
+                mwP=(pdfPrev*pdfPrev)/(pdfPrev*pdfPrev+pdfN2*pdfN2);
+                Lo+=((r==1)?skyRadiance(w):ground)*(CLOUD_SKYLIGHTING*mwP);
+                break;
+            }
+
+            Lo=min(Lo,vec3(clampL));
+            if(Lo!=Lo) Lo=vec3(0.);
+
+            float Tatm=exp(-tHit*2.6e-5*altF*(1.+.5*rw));
+            acc+=vec4(Lo*Tatm+haze*(1.-Tatm),1.);
         }
 
-        float alpha=1.-T;
-        if(alpha<.001) return vec4(0.);
-
-        float dMean=dSum/max(wSum,1e-5);
-        float altF=exp(-max(cameraPosition.y-base,0.)*1.2e-4);
-        float Tatm=exp(-dMean*2.6e-5*altF*(1.+.5*rw));
-        vec3 haze=skyRadiance(rd);
-        vec3 rgb=acc*Tatm+haze*alpha*(1.-Tatm);
-
-        return vec4(rgb,alpha);
-    }
-
-    vec4 volumetricClouds(vec3 rd,int steps){
-        vec3 L=lightDirection();
-        vec3 light=lightColor(sunDirection())*.318;
-        vec3 amb=.5*(skyRadiance(vec3(0.,1.,0.))+skyRadiance(normalize(vec3(rd.x,max(rd.y,.02),rd.z))));
-        return cloudRayMarch(rd,L,amb,light,steps);
+        state=saved;
+        return acc/float(samples);
     }
 
 #endif

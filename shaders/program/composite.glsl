@@ -1,4 +1,5 @@
 
+
 #ifdef vsh
 
     out vec2 texcoord;
@@ -22,7 +23,8 @@
     #include "/lib/lighting/gtao.glsl"
     #include "/lib/atmosphere/volumetricClouds.glsl"
 
-    layout(r32ui) uniform uimage2D histXY;
+    #include "/lib/rtwsm/getWarp.glsl"
+    #include "/lib/rtwsm/backward.glsl"
 
     #ifdef VOLUMETRIC_CLOUDS
         layout(rgba32f) uniform image2D cloudHistA;
@@ -171,41 +173,17 @@
     const int shadowMapResolution=2048;
     const float shadowDistance=192.0;
 
-    float rtwsmWarp1D(sampler2D tex,float u,int row,out float slope){
-        slope=1.;
-        if(u<=0.||u>=1.) return u;
-
-        float t=u*float(256);
-        int i=min(int(t),256-1);
-        float f=t-float(i);
-
-        float hi=texelFetch(tex,ivec2(i,row),0).r;
-        if(hi<=0.) return u;
-
-        float lo=(i==0)?0.:texelFetch(tex,ivec2(i-1,row),0).r;
-
-        slope=max((hi-lo)*float(256),1e-3);
-        return mix(lo,hi,f);
-    }
-
-    vec2 rtwsmWarp(vec2 clipXY,out vec2 slope){
-        vec2 uv=clipXY*.5+.5;
-        vec2 w;
-        w.x=rtwsmWarp1D(samplerWarpXY,uv.x,0,slope.x);
-        w.y=rtwsmWarp1D(samplerWarpXY,uv.y,1,slope.y);
-        return w*2.-1.;
-    }
-
     vec4 toShadowClip(vec3 worldPos){
         vec4 c=shadowProjection*(shadowModelView*vec4(worldPos,1.));
         return vec4(c.xyz/c.w,1.);
     }
 
+    
     vec3 sampleShadow(vec3 worldPos,vec3 n,float NdotL){
         vec4 clip=toShadowClip(worldPos);
 
         vec2 slope;
-        rtwsmWarp(clip.xy,slope);
+        rtwsmWarpClip(samplerWarpXY,clip.xy,slope);
         vec2 texelWorld=vec2(abs(2./shadowProjection[0][0]),abs(2./shadowProjection[1][1]))/(float(shadowMapResolution)*slope);
         float texel=max(texelWorld.x,texelWorld.y);
 
@@ -217,7 +195,7 @@
 
         vec4 c=toShadowClip(offsetPos);
         vec2 sampleSlope;
-        vec2 warpedXY=rtwsmWarp(c.xy,sampleSlope);
+        vec2 warpedXY=rtwsmWarpClip(samplerWarpXY,c.xy,sampleSlope);
         vec3 sp=vec3(warpedXY,c.z)*.5+.5;
 
         if(sp.x<0.||sp.x>1.||sp.y<0.||sp.y>1.||sp.z<0.||sp.z>1.){
@@ -341,7 +319,7 @@
                     }
                 #endif
 
-                vec4 cl=fresh?volumetricClouds(cloudDir,CLOUD_RAY_STEPS):vec4(0.);
+                vec4 cl=fresh?volumetricClouds(cloudDir,CLOUD_RAY_STEPS,6,1,0u):vec4(0.);
                 cl=cloudTemporal(cl,cloudDir,px,texcoord,fresh);
                 vec3 sunS=sunDirection();
                 vec3 sunC=vec3(0.);
@@ -375,14 +353,7 @@
         vec3 L=lightDirection();
         float NdotLg=clamp(dot(ng,L),0.,1.);
 
-        vec4 shadowClip=toShadowClip(worldPos);
-        vec2 suv=shadowClip.xy*.5+.5;
-        if(!isHand&&((px.x&3)|(px.y&3))==0&&suv.x>=0.&&suv.x<=1.&&suv.y>=0.&&suv.y<=1.){
-            int binX=clamp(int(suv.x*float(256)),0,256-1);
-            int binY=clamp(int(suv.y*float(256)),0,256-1);
-            imageAtomicAdd(histXY,ivec2(binX,0),1u);
-            imageAtomicAdd(histXY,ivec2(binY,1),1u);
-        }
+        if(!isHand) rtwsmBackwardAnalysis(px,worldPos,depth,ng);
 
         uvec4 gbPx=texelFetch(colortex3,px,0);
 
@@ -447,7 +418,7 @@
         vec3 skyEnv=skyRadiance(R);
         #ifdef VOLUMETRIC_CLOUDS
             if(m.roughness<.4&&skyVis>.01){
-                vec4 cl=volumetricClouds(R,CLOUD_REFLECTION_STEPS);
+                vec4 cl=volumetricClouds(R,12,2,1,101u);
                 skyEnv=mix(skyEnv,skyEnv*(1.-cl.a)+cl.rgb,1.-smoothstep(.2,.4,m.roughness));
             }
         #endif
@@ -464,7 +435,10 @@
         
         vec3 wf=m.diffuse*vec3(1.,.62,.32)*.025*m.ao;
 
-        vec3 hdr=direct+ambient+emissive+wf;
+        float nightAmb=1.-smoothstep(-.25,-.02,sunDirection().y);
+        vec3 coldAmb=m.diffuse*vec3(.40,.60,1.)*.45*NIGHT_BRIGHTNESS*nightAmb*m.ao*(.75+.25*N.y)*mix(.6,1.,skyVis);
+
+        vec3 hdr=direct+ambient+emissive+wf+coldAmb;
         color=vec4(hdr,albedo.a);
     }
 

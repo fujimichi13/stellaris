@@ -57,7 +57,7 @@
 
         vec3 V=normalize(worldSpacePosition(texcoord,depth));
         vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
-        float alt=eyeAlt(cameraPosition.y);
+        float alt=atmoAlt(cameraPosition.y);
         float disc=smoothstep(.9998,.99985,dot(V,S));
 
         vec3 sky;

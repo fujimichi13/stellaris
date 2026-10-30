@@ -19,6 +19,8 @@
     #include "/lib/utility/dithering.glsl"
     #include "/lib/atmosphere/scattering.glsl"
     #include "/lib/voxel/voxel.glsl"
+    #include "/lib/lighting/blockLight.glsl"
+    #include "/lib/lighting/irradianceCache.glsl"
     
     in vec2 texcoord;
 
@@ -44,78 +46,33 @@
         return col*(20. / area);
     }
 
-    vec3 getblocklight(vec3 P,vec3 N){
-        ivec3 c0=cellCoord(P);
+    vec3 icEstimate(vec3 hp,vec3 hn,float skyF,vec3 L,vec3 lightCol){
+        vec3 ro=hp+hn*.01;
+        vec3 acc=getblocklight(ro,hn);
 
-        int cellIdx[27];
-        uint cellCnt[27];
-        float cellG[27];
-        float cum[27];
-        int nc=0;
-        float W=0.;
-
-        for(int z=-1; z<=1; z++)
-        for(int y=-1; y<=1; y++)
-        for(int x=-1; x<=1; x++){
-            int cell=lightCell(c0+ivec3(x,y,z));
-            if(cell<0) continue;
-            uint cnt=min(vxl.cellCount[cell],uint(16));
-            if(cnt==0u) continue;
-            vec3 cc=(vec3(c0+ivec3(x,y,z)-ivec3(16,8,16))+.5)*8.;
-            vec3 dc=cc-P;
-            float g=1. / (dot(dc,dc)+24.);
-            W += float(cnt)*g;
-            cellIdx[nc]=cell;
-            cellCnt[nc]=cnt;
-            cellG[nc]=g;
-            cum[nc]=W;
-            nc++;
-        }
-        if(nc==0) return vec3(0.);
-
-        float sumW=0.;
-        float selF=0.;
-        vec3 selRgb=vec3(0.);
-        vec3 selPos=vec3(0.);
-
-        for(int i=0; i<4; i++){
-            float tgt=rand()*W;
-            int k=0;
-            while(k<nc-1&&cum[k]<tgt) k++;
-            uint cnt=cellCnt[k];
-            uint slot=min(uint(rand()*float(cnt)),cnt-1u);
-            vLight lt=vxl.lights[vxl.cellSlots[cellIdx[k]*16+int(slot)]];
-
-            vec2 uv=rand2();
-            vec3 pos=lt.a.xyz+lt.e1.xyz*uv.x+lt.e2.xyz*uv.y;
-            vec3 d=pos-P;
-            float d2=dot(d,d);
-            vec3 wi=d*inversesqrt(max(d2,1e-6));
-
-            float cosS=dot(N,wi);
-            if(cosS<=0.) continue;
-            float cosL=abs(dot(lt.n.xyz,wi));
-            vec3 col=unpackUnorm4x8(floatBitsToUint(lt.a.w)).rgb;
-
-            vec3 rgb=col*(20.*cosS*cosL / (d2+.5) / PI);
-            float f=dot(rgb,vec3(.2126,.7152,.0722));
-            if(f<=1e-6) continue;
-
-            float w=f*W / cellG[k];
-            sumW += w;
-            if(rand()*sumW<w){
-                selF=f;
-                selRgb=rgb;
-                selPos=pos;
-            }
+        if(dot(hn,L)>0.){
+            vec3 sd=conedir(L,rand2());
+            float ndl=dot(hn,sd);
+            if(ndl>0.) acc+=(ndl/PI)*lightCol*traceTrans(ro,sd,256.);
         }
 
-        if(sumW<=0.) return vec3(0.);
-
-        vec3 d=selPos-P;
-        float dl=length(d);
-        vec3 T=traceTrans(P,d / dl,max(dl-.1,.01));
-        return selRgb*T*(sumW / (float(4)*selF));
+        vec3 wi=cosinedir(hn,rand2());
+        hit h;
+        vec4 alb;
+        uint bid;
+        float tHit;
+        vec3 tint;
+        if(!closest(ro,wi,96.,h,alb,bid,tHit,tint)){
+            acc+=tint*skyF*skyRadiance(wi)*mix(.05,1.,smoothstep(-.2,.05,wi.y));
+        }else if(bid!=20u){
+            vec3 hn2=h.normal;
+            if(dot(hn2,wi)>0.) hn2=-hn2;
+            vec3 hp2=ro+wi*tHit;
+            vec3 E2;
+            if(icLookup(hp2+hn2*.01,hn2,E2))
+                acc+=tint*pow(alb.rgb,vec3(2.2))*E2;
+        }
+        return acc;
     }
 
     vec3 radiance(vec3 P,vec3 N,float skyF,vec3 L,vec3 lightCol,vec2 firstNoise){
@@ -146,6 +103,20 @@
             if(dot(hn,wi)>0.) hn=-hn;
             vec3 hp=ro0+wi*tHit;
             vec3 a=pow(alb.rgb,vec3(2.2));
+
+            if(bid!=20u){
+                vec3 icP=hp+hn*.01;
+                vec3 E;
+                bool icOk=icLookup(icP,hn,E);
+
+                if(b==0&&(!icOk||rand()*float(4)<1.))
+                    icUpdate(icP,hn,icEstimate(hp,hn,skyF,L,lightCol));
+
+                if(icOk){
+                    acc += thr*a*E;
+                    break;
+                }
+            }
 
             if(bid >= 10u&&bid<=13u&&b>PT_BOUNCES)
                 acc += thr*ptEmitterRadiance(h.quad);

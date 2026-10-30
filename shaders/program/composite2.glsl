@@ -176,7 +176,7 @@
 
             vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
             vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
-            float alt=eyeAlt(cameraPosition.y);
+            float alt=atmoAlt(cameraPosition.y);
             vec3 sunCol=sunLight(S,alt);
             vec3 moonCol=moonLight(S);
             vec3 lightCol=sunCol+moonCol;
@@ -250,7 +250,7 @@
 
             vec3 L=normalize(mat3(gbufferModelViewInverse)*shadowLightPosition);
             vec3 S=normalize(mat3(gbufferModelViewInverse)*sunPosition);
-            float alt=eyeAlt(cameraPosition.y);
+            float alt=atmoAlt(cameraPosition.y);
             vec3 sunCol=sunLight(S,alt);
             vec3 moonCol=moonLight(S);
             vec3 lightCol=sunCol+moonCol;

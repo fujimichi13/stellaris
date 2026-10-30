@@ -18,9 +18,8 @@
 
     in vec2 texcoord;
 
-    /* RENDERTARGETS:0,15 */
+    /* RENDERTARGETS:0 */
     layout(location=0) out vec4 color;
-    layout(location=1) out vec4 color1;
 
     float luma(vec3 c){
         return dot(c,vec3(.2126,.7152,.0722));
@@ -150,7 +149,6 @@
         vec3 outC=decompress(mix(curC,hc,w));
 
         color=vec4(outC,curA);
-        color1=vec4(outC,1.);
     }
 
 #endif

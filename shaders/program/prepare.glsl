@@ -15,7 +15,7 @@ uniform vec3 sunPosition;
 uniform vec3 cameraPosition;
 
 void main(){
-    float alt=min(eyeAlt(cameraPosition.y),50.);
+    float alt=min(atmoAlt(cameraPosition.y),50.);
 
     ivec2 id=ivec2(gl_GlobalInvocationID.xy);
     vec2 uv=(vec2(id)+.5)/vec2(256.,128.);
